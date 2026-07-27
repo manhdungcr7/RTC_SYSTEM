@@ -1,0 +1,19 @@
+# Backend FastAPI — CHỈ dùng remote encoder (Kaggle, xem AIC_REMOTE_ENCODER_URL),
+# nên image nhẹ (không torch/transformers). BẮT BUỘC set 1 LLM API key (Anthropic/
+# OpenAI/Gemini) qua env — nếu không, các bước dịch/mở-rộng câu (clauses_en, OCR-
+# keyword, ASR-paraphrase, entity resolution) sẽ lỗi vì fallback envit5 cần torch
+# (đã bỏ khỏi image này để nhẹ).
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements-docker.txt .
+RUN pip install --no-cache-dir -r requirements-docker.txt
+
+COPY api ./api
+COPY core ./core
+COPY config ./config
+
+EXPOSE 8080
+ENV PYTHONIOENCODING=utf-8
+CMD ["python", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8080"]

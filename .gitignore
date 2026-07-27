@@ -1,0 +1,27 @@
+# Dữ liệu thật (video/keyframe/vector DB) — QUÁ LỚN cho Git, gửi qua Google
+# Drive riêng (xem README.md mục "Lấy dữ liệu"), giải nén đúng vị trí này.
+data/
+docker/volumes/
+
+# artifacts/ = sản phẩm PIPELINE OFFLINE (embeddings/caption/ocr/asr trung gian,
+# ~2.7GB) — KHÔNG cần lúc CHẠY hệ thống (backend dùng Milvus/ES đã build sẵn qua
+# docker/volumes/, không đọc lại artifacts/). Chỉ dev/chủ repo cần khi re-index.
+artifacts/
+
+# Secrets — KHÔNG commit key thật, chỉ commit .env.example
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node/frontend
+frontend/node_modules/
+frontend/dist/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/

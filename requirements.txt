@@ -1,0 +1,24 @@
+# Backend aic-system/. torch cần bản CÓ CUDA (máy dev có RTX 3050 4GB) — pip mặc
+# định cài bản CPU-only, PHẢI cài riêng qua index cu126:
+#   pip uninstall torch
+#   pip install torch==2.9.1+cu126 --index-url https://download.pytorch.org/whl/cu126
+#   pip install -r requirements.txt   (các gói còn lại)
+fastapi==0.139.0
+uvicorn[standard]==0.51.0
+pydantic==2.12.4
+python-multipart==0.0.32
+pymilvus==3.0.0
+elasticsearch==8.15.1
+numpy==2.3.5
+pandas==2.3.3
+transformers==5.13.0
+sentence-transformers==5.6.1
+sentencepiece
+ftfy
+regex
+einops
+timm
+anthropic
+openai
+google-generativeai
+Pillow
