@@ -27,8 +27,9 @@ vector: metaclip2/pecore/beit3/capemb/dinov3) + Elasticsearch (OCR/ASR/objects)
 - Ổ đĩa trống đủ chứa dữ liệu (xem mục 3 — có thể tới hàng chục-trăm GB tuỳ
   bạn tải đủ video gốc hay không).
 
-Bạn **KHÔNG** cần cài Python/Node/GPU driver riêng — toàn bộ backend/frontend
-chạy trong Docker.
+Backend/frontend chạy **trong Docker**, không cần cài Node/GPU driver riêng.
+Chỉ cần **Python 3 + pip** trên máy host cho bước tải dữ liệu (mục 3, dùng
+`huggingface_hub`) — không dùng để chạy hệ thống, chỉ để tải file.
 
 ---
 
@@ -46,13 +47,18 @@ thêm; nếu repo là cả project lớn hơn thì `cd aic-system` trước khi 
 
 ## 3. Lấy dữ liệu (KHÔNG có trong Git — quá lớn)
 
-2 gói dữ liệu đã up sẵn lên **Hugging Face Hub** (public, không cần token để
-tải) — cài `huggingface_hub` rồi tải thẳng bằng lệnh dưới, không cần chờ
-Google Drive:
+2 gói dữ liệu đã up sẵn lên **Hugging Face Hub** (public, không cần đăng nhập/
+token để tải) — cài `huggingface_hub` rồi tải thẳng bằng lệnh dưới, không cần
+chờ Google Drive:
 
 ```bash
 pip install -U huggingface_hub
 ```
+
+**Cả 2 lệnh tải bên dưới đều RESUME được** nếu bị ngắt mạng/tắt máy giữa
+chừng — chạy lại y nguyên lệnh, nó tự tiếp tục từ chỗ dở dang, không tải lại
+từ đầu. Tổng dữ liệu ~18GB (13GB DB + 5.3GB keyframe) nên tuỳ tốc độ mạng có
+thể mất từ vài chục phút tới vài giờ — cứ để chạy nền, không cần canh chừng.
 
 ### 3a. Database đã build sẵn (Milvus + Elasticsearch) — BẮT BUỘC
 
@@ -62,13 +68,14 @@ OCR/caption/objects + 111,411 đoạn ASR, ~13GB) — **không cần chạy lạ
 indexing**, chỉ cần tải đúng vào thư mục Docker dùng.
 
 ```bash
-huggingface-cli download manhdungcr7/aic2026-milvus-es-db \
+hf download manhdungcr7/aic2026-milvus-es-db \
   --repo-type dataset --local-dir aic-system/docker/volumes
 ```
 
 Kết quả phải có đúng cấu trúc con `docker/volumes/{etcd,minio,milvus,es}/`.
-**Chỉ chạy lệnh này khi Docker Compose đang TẮT** (`docker compose down`/
-`stop`) — không tải đè lên volume đang có container ghi vào, dễ hỏng dữ liệu.
+(Lần đầu setup thì chưa có Docker nào chạy nên cứ tải bình thường. Chỉ cần
+lưu ý nếu SAU NÀY tải lại/cập nhật bộ dữ liệu mới: phải `docker compose stop`
+trước — không tải đè lên volume đang có container ghi vào, dễ hỏng dữ liệu.)
 
 ### 3b. Keyframe + CSV map — BẮT BUỘC
 
@@ -77,7 +84,7 @@ Repo: **[manhdungcr7/aic2026-keyframes](https://huggingface.co/datasets/manhdung
 ~5.3GB), không tải được từ đâu khác:
 
 ```bash
-huggingface-cli download manhdungcr7/aic2026-keyframes \
+hf download manhdungcr7/aic2026-keyframes \
   --repo-type dataset --local-dir aic-system/data
 ```
 

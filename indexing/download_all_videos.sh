@@ -8,7 +8,10 @@
 set -uo pipefail
 
 BASE="https://aic-data.ledo.io.vn"
-DEST="/f/AI_Challenge_Video_Image_Retrieval/aic-system/data/videos_full"
+# DEST tính TƯƠNG ĐỐI theo vị trí script (aic-system/indexing/) — chạy được trên
+# BẤT KỲ máy nào clone repo, không phụ thuộc đường dẫn tuyệt đối của máy dev gốc.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEST="$SCRIPT_DIR/../data/videos_full"
 LOG="$DEST/download_progress.log"
 LOCK="$DEST/.download.lock"
 mkdir -p "$DEST"
