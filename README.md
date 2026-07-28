@@ -46,27 +46,43 @@ thêm; nếu repo là cả project lớn hơn thì `cd aic-system` trước khi 
 
 ## 3. Lấy dữ liệu (KHÔNG có trong Git — quá lớn)
 
-Người gửi (chủ repo) cần up 2 gói dữ liệu này lên Google Drive rồi chia sẻ
-link cho các thành viên:
+2 gói dữ liệu đã up sẵn lên **Hugging Face Hub** (public, không cần token để
+tải) — cài `huggingface_hub` rồi tải thẳng bằng lệnh dưới, không cần chờ
+Google Drive:
+
+```bash
+pip install -U huggingface_hub
+```
 
 ### 3a. Database đã build sẵn (Milvus + Elasticsearch) — BẮT BUỘC
 
-Đây là kết quả pipeline offline đã chạy xong (167,850 keyframe đã embed +
-OCR/caption/objects + 111,411 đoạn ASR) — **không cần chạy lại pipeline
-indexing**, chỉ cần phục hồi đúng thư mục dữ liệu của Docker.
+Repo: **[manhdungcr7/aic2026-milvus-es-db](https://huggingface.co/datasets/manhdungcr7/aic2026-milvus-es-db)**
+— kết quả pipeline offline đã chạy xong (167,850 keyframe đã embed +
+OCR/caption/objects + 111,411 đoạn ASR, ~13GB) — **không cần chạy lại pipeline
+indexing**, chỉ cần tải đúng vào thư mục Docker dùng.
 
-- Nén thư mục `aic-system/docker/volumes/` (gồm `etcd/`, `minio/`, `milvus/`,
-  `es/`) thành 1 file zip, up Google Drive.
-- Thành viên tải về, giải nén đè vào đúng `aic-system/docker/volumes/` (giữ
-  nguyên cấu trúc con `etcd/ minio/ milvus/ es/`).
+```bash
+huggingface-cli download manhdungcr7/aic2026-milvus-es-db \
+  --repo-type dataset --local-dir aic-system/docker/volumes
+```
 
-### 3b. Keyframe + CSV map — BẮT BUỘC, chỉ có qua Google Drive
+Kết quả phải có đúng cấu trúc con `docker/volumes/{etcd,minio,milvus,es}/`.
+**Chỉ chạy lệnh này khi Docker Compose đang TẮT** (`docker compose down`/
+`stop`) — không tải đè lên volume đang có container ghi vào, dễ hỏng dữ liệu.
 
-Đây là sản phẩm riêng của pipeline xử lý (TransNetV2 keyframe + OCR/caption),
-**không tải được từ đâu khác** — chủ repo cần nén `aic-system/data/raw_*/`
-(giữ nguyên toàn bộ các thư mục `raw_L21_a/`, `raw_account0/`... — mỗi
-thư mục có `keyframes/<video>/*.webp` + `maps/<video>.csv`) rồi up Google
-Drive. Thành viên tải về, giải nén đúng vào `aic-system/data/` (giữ cấu trúc).
+### 3b. Keyframe + CSV map — BẮT BUỘC
+
+Repo: **[manhdungcr7/aic2026-keyframes](https://huggingface.co/datasets/manhdungcr7/aic2026-keyframes)**
+— sản phẩm riêng của pipeline xử lý (TransNetV2 keyframe + OCR/caption,
+~5.3GB), không tải được từ đâu khác:
+
+```bash
+huggingface-cli download manhdungcr7/aic2026-keyframes \
+  --repo-type dataset --local-dir aic-system/data
+```
+
+Kết quả phải có các thư mục `data/raw_L21_a/`, `data/raw_account0/`...,
+mỗi thư mục có `keyframes/<video>/*.webp` + `maps/<video>.csv`.
 
 Không cần `videos_full/videos/*.mp4` để TÌM KIẾM (chỉ cần keyframe cho
 thumbnail) — xem mục 3c để lấy video gốc nhanh hơn nếu cần phát lại.
