@@ -11,6 +11,10 @@ vector: metaclip2/pecore/beit3/capemb/dinov3) + Elasticsearch (OCR/ASR/objects)
 + 1 notebook Kaggle chạy encoder (GPU free, vì máy dev không đủ VRAM/RAM nạp
 4 model cùng lúc).
 
+📊 Xem **[PIPELINE.md](PIPELINE.md)** — sơ đồ chi tiết toàn bộ thuật toán, từ
+video thô (offline) tới xử lý 1 câu truy vấn (online), có giải thích lý do
+thiết kế từng bước.
+
 ---
 
 ## 1. Yêu cầu máy
