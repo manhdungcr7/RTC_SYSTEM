@@ -6,12 +6,12 @@ biết pts_time của từng keyframe trong video đó.
 from __future__ import annotations
 
 from core.media_index import MediaIndex
-from core.repositories.es_repo import EsRepo
+from core.repositories.meili_repo import MeiliRepo
 
 ALIGN_WINDOW_S = 2.0
 
 
-def search_asr_as_frames(es_repo: EsRepo, media_index: MediaIndex, query_text: str,
+def search_asr_as_frames(es_repo: MeiliRepo, media_index: MediaIndex, query_text: str,
                           size: int = 200) -> list[str]:
     """Trả rank-list id "{video}:{n:06d}" (sort theo es_score giảm dần, dedup giữ
     điểm cao nhất khi 1 keyframe rơi vào nhiều đoạn ASR khớp) — đúng dạng

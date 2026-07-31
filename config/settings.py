@@ -1,6 +1,12 @@
-"""Hằng số HẠ TẦNG (Milvus/ES/đường dẫn). Trọng số fusion/thuật toán nằm ở
+"""Hằng số HẠ TẦNG (FAISS/Meilisearch/đường dẫn). Trọng số fusion/thuật toán nằm ở
 core/config.py — tách riêng để 1 file là "hạ tầng" (đổi khi đổi máy/port) và 1
-file là "kiến thức đo được" (đổi khi có bằng chứng mới)."""
+file là "kiến thức đo được" (đổi khi có bằng chứng mới).
+
+ĐÃ ĐỔI (từ Milvus+Elasticsearch): máy dev RAM không đủ chạy ổn định Milvus (kèm
+etcd+MinIO) — đo thật nhiều lần Milvus báo "healthy" nhưng nội bộ đã OOM
+("Cannot allocate memory"), treo mọi truy vấn. Ở quy mô AIC (167,850 vector/nhánh)
+FAISS in-process (không cần server riêng) + Meilisearch (nhẹ hơn ES, không cần
+heap JVM) là lựa chọn hợp lý hơn cho 1 laptop cá nhân — xem PIPELINE.md."""
 import os
 from pathlib import Path
 
@@ -8,10 +14,10 @@ ROOT = Path(__file__).resolve().parents[1]          # aic-system/
 DATA_ROOT = ROOT / "data"
 ARTIFACTS_ROOT = ROOT / "artifacts"
 
-# ---- Milvus ----
-# Env-overridable: chạy qua Docker Compose thì service khác đọc "http://milvus:19530"
-# (tên service trong cùng network) thay vì "localhost" — xem docker/docker-compose.yml.
-MILVUS_URI = os.environ.get("AIC_MILVUS_URI", "http://localhost:19530")
+# ---- FAISS ----
+# Env-overridable: trong container Docker, index FAISS được bind-mount vào 1
+# đường dẫn cố định (vd /faiss) khác layout máy dev — xem docker/docker-compose.yml.
+FAISS_DIR = Path(os.environ.get("AIC_FAISS_DIR", str(ROOT / "docker" / "volumes" / "faiss")))
 COLLECTIONS = {
     "metaclip2": "metaclip2",   # nhánh CHÍNH, đa ngữ (không dịch)
     "beit3": "beit3",           # ensemble, lợi QA, chỉ tiếng Anh
@@ -20,10 +26,11 @@ COLLECTIONS = {
     "capemb": "capemb",         # text-to-caption, Qwen3-Embedding-4B, đa ngữ
 }
 
-# ---- Elasticsearch ----
-ES_URL = os.environ.get("AIC_ES_URL", "http://localhost:9200")
-ES_INDEX_FRAMES = "aic_frames"
-ES_INDEX_ASR = "aic_asr"
+# ---- Meilisearch ----
+MEILI_URL = os.environ.get("AIC_MEILI_URL", "http://localhost:7700")
+MEILI_KEY = os.environ.get("AIC_MEILI_KEY", "")
+MEILI_INDEX_FRAMES = "aic_frames"
+MEILI_INDEX_ASR = "aic_asr"
 
 # ---- Media (đã có sẵn trên đĩa, KHÔNG cần tải lại) ----
 # DATA_ROOT/ARTIFACTS_ROOT cũng env-overridable — trong container Docker, data thật

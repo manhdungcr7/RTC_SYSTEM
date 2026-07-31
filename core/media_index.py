@@ -1,5 +1,5 @@
 """Thay `system/aic/data.py` (KeyframeIndex đọc từ .npz trong RAM) — vì giờ
-metadata/vector đã ở Milvus, media_index chỉ cần trỏ tới FILE THẬT trên đĩa cho
+metadata/vector đã ở FAISS, media_index chỉ cần trỏ tới FILE THẬT trên đĩa cho
 tầng phục vụ (`api/routers/media.py`): ảnh keyframe (.webp), map frame_idx/pts_time
 (CSV), video gốc (.mp4). Build 1 LẦN lúc FastAPI startup, giữ trong RAM.
 

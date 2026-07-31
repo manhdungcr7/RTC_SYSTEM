@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from core import config as C
-from core.repositories.milvus_repo import MilvusRepo
+from core.repositories.faiss_repo import FaissRepo
 
 
 @dataclass
@@ -34,7 +34,7 @@ def rrf(rank_lists: list[list[str]], k: int = C.RRF_K,
     return out
 
 
-def maxmean_clauses(clause_vecs: np.ndarray, milvus_repo: MilvusRepo, collection: str,
+def maxmean_clauses(clause_vecs: np.ndarray, milvus_repo: FaissRepo, collection: str,
                      topk: int = C.MAXMEAN_TOPK_PER_CLAUSE,
                      alpha: float = C.MAXMEAN_ALPHA) -> list[tuple[str, float]]:
     """maxmean đa mệnh đề CỦA CÙNG 1 query, trên 1 collection (thường: metaclip2).

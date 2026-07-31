@@ -133,7 +133,7 @@ class MetaClip2Encoder:
         # low_cpu_mem_usage=True: nạp thẳng weight (safetensors, memory-map) vào bộ
         # nhớ đích thay vì tạo 1 bản sao float32 tạm rồi convert — tránh đỉnh RAM
         # gấp đôi lúc nạp. ĐÃ THỬ THẬT: thiếu cờ này gây Segmentation fault khi chạy
-        # trong app đầy đủ (Milvus/ES client + media_index đã chiếm RAM sẵn), dù
+        # trong app đầy đủ (FAISS/Meilisearch client + media_index đã chiếm RAM sẵn), dù
         # chạy cô lập một mình vẫn qua được (baseline RAM rảnh hơn).
         self.model = AutoModel.from_pretrained(
             model_id, dtype=torch.float32, low_cpu_mem_usage=True,

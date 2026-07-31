@@ -4,8 +4,8 @@ data/
 docker/volumes/
 
 # artifacts/ = sản phẩm PIPELINE OFFLINE (embeddings/caption/ocr/asr trung gian,
-# ~2.7GB) — KHÔNG cần lúc CHẠY hệ thống (backend dùng Milvus/ES đã build sẵn qua
-# docker/volumes/, không đọc lại artifacts/). Chỉ dev/chủ repo cần khi re-index.
+# ~2.7GB) — KHÔNG cần lúc CHẠY hệ thống (backend dùng FAISS/Meilisearch đã build
+# sẵn qua docker/volumes/, không đọc lại artifacts/). Chỉ dev/chủ repo cần khi re-index.
 artifacts/
 
 # Secrets — KHÔNG commit key thật, chỉ commit .env.example

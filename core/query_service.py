@@ -326,7 +326,7 @@ Trả JSON: {{"paraphrases": ["...", ...]}}. Chỉ trả JSON, không giải th�
 def expand_asr_queries(query: str) -> list[str]:
     """Sinh vài biến thể "giọng bản tin" của câu truy vấn để tra ASR (BM25) theo Ý
     NGHĨA thay vì chỉ khớp đúng từ — ASR không có tầng vector riêng (tránh thêm
-    collection Milvus mới, tốn RAM), nên bù bằng cách nới rộng phía TỪ KHOÁ trước
+    index FAISS mới, tốn RAM), nên bù bằng cách nới rộng phía TỪ KHOÁ trước
     khi tra BM25 (LLM đóng vai "phóng viên" diễn đạt lại). Trả [] nếu không có API
     hoặc lỗi. Có cache đĩa."""
     if not available():

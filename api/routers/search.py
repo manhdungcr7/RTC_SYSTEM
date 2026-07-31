@@ -21,8 +21,8 @@ from core.asr_align import search_asr_as_frames
 from core.fusion import Hit, dedup_by_video, maxmean_clauses, rrf
 from core.media_index import MediaIndex
 from core.query_encoders import QueryEncoders
-from core.repositories.es_repo import EsRepo
-from core.repositories.milvus_repo import MilvusRepo
+from core.repositories.faiss_repo import FaissRepo
+from core.repositories.meili_repo import MeiliRepo
 
 router = APIRouter()
 
@@ -32,8 +32,8 @@ CANDIDATE_POOL = 500      # số ứng viên hydrate metadata sau RRF (trước 
 
 @router.post("/search", response_model=SearchResponse)
 def search(req: SearchRequest,
-           milvus: MilvusRepo = Depends(get_milvus),
-           es: EsRepo = Depends(get_es),
+           milvus: FaissRepo = Depends(get_milvus),
+           es: MeiliRepo = Depends(get_es),
            encoders: QueryEncoders = Depends(get_encoders),
            media_index: MediaIndex = Depends(get_media_index)) -> SearchResponse:
     kind = req.kind

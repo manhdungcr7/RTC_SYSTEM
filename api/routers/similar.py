@@ -12,23 +12,18 @@ from api.deps import get_media_index, get_milvus
 from api.schemas.search import SearchHit
 from api.schemas.similar import SimilarRequest, SimilarResponse
 from core.media_index import MediaIndex
-from core.repositories.milvus_repo import MilvusRepo
+from core.repositories.faiss_repo import FaissRepo
 
 router = APIRouter()
 
 
 @router.post("/similar", response_model=SimilarResponse)
-def similar(req: SimilarRequest, milvus: MilvusRepo = Depends(get_milvus),
+def similar(req: SimilarRequest, milvus: FaissRepo = Depends(get_milvus),
             media_index: MediaIndex = Depends(get_media_index)) -> SimilarResponse:
     doc_id = f"{req.video}:{req.n:06d}"
-    rows = milvus.client.query(
-        collection_name="dinov3", filter=f'id == "{doc_id}"',
-        output_fields=["vector"], limit=1,
-    )
-    if not rows:
+    vec = milvus.fetch_vector_by_id("dinov3", doc_id)
+    if vec is None:
         raise HTTPException(404, f"không tìm thấy vector dinov3 cho {doc_id}")
-    import numpy as np
-    vec = np.array(rows[0]["vector"], dtype=np.float32)
 
     scored = milvus.search_scored("dinov3", vec, req.topk + 1)   # +1 vì chính nó luôn hạng 1
     scored = [(i, s) for i, s in scored if i != doc_id][:req.topk]

@@ -28,7 +28,7 @@ flowchart LR
   OFF --- OFF4["OCR chữ trên khung hình"]:::offline
   OFF --- OFF5["ASR lời thoại"]:::offline
   OFF --- OFF6["Object + màu"]:::offline
-  OFF --- OFF7["Nạp Milvus / Elasticsearch"]:::offline
+  OFF --- OFF7["Nạp FAISS / Meilisearch"]:::offline
 
   ROOT --- ON["② Online<br/>mỗi câu truy vấn"]:::online
   ON --- ON1["Xử lý câu bằng LLM"]:::online
@@ -49,7 +49,7 @@ flowchart LR
 
 Chạy 1 lần trên GPU Kaggle free (notebook `01`–`10`, xem
 [`indexing/kaggle/`](indexing/kaggle/)), output là các file/vector nạp thẳng
-vào Milvus + Elasticsearch — máy dev không cần GPU cho bước này.
+vào FAISS + Meilisearch — máy dev không cần GPU cho bước này.
 
 ```mermaid
 flowchart TD
@@ -78,16 +78,16 @@ flowchart TD
   KF --> OBJ["Notebook 08<br/>YOLO 80 lớp COCO<br/>+ màu chủ đạo + ô lưới 4x4"]:::offline
   AU --> ASR["Notebook 06<br/>ChunkFormer<br/>ASR tiếng Việt · WER 8.31%"]:::offline
 
-  MC --> MV1[("Milvus<br/>metaclip2")]:::infra
-  PC --> MV2[("Milvus<br/>pecore")]:::infra
-  B3 --> MV3[("Milvus<br/>beit3")]:::infra
-  DV --> MV4[("Milvus<br/>dinov3")]:::infra
-  CE --> MV5[("Milvus<br/>capemb")]:::infra
+  MC --> MV1[("FAISS<br/>metaclip2")]:::infra
+  PC --> MV2[("FAISS<br/>pecore")]:::infra
+  B3 --> MV3[("FAISS<br/>beit3")]:::infra
+  DV --> MV4[("FAISS<br/>dinov3")]:::infra
+  CE --> MV5[("FAISS<br/>capemb")]:::infra
 
-  OCR --> ES1[("Elasticsearch<br/>aic_frames<br/>ocr_text · caption · objects")]:::infra
-  OBJ --> ES1
-  CAP --> ES1
-  ASR --> ES2[("Elasticsearch<br/>aic_asr<br/>text theo đoạn (start,end)")]:::infra
+  OCR --> MS1[("Meilisearch<br/>aic_frames<br/>ocr_text · caption · objects")]:::infra
+  OBJ --> MS1
+  CAP --> MS1
+  ASR --> MS2[("Meilisearch<br/>aic_asr<br/>text theo đoạn (start,end)")]:::infra
 ```
 
 ### Chi tiết từng module
@@ -95,11 +95,11 @@ flowchart TD
 | Module | Input | Model | Output |
 |---|---|---|---|
 | Keyframe + audio | video `.mp4` | TransNetV2 (phát hiện chuyển cảnh) | `.webp` + CSV map + `.opus` — 167,850 khung (dedup từ 182,422) |
-| 4 nhánh embedding ảnh | keyframe `.webp` | MetaCLIP-2 / PE-Core-L14-336 / BEiT-3 / DINOv3 | vector 1024 chiều/nhánh → Milvus collection riêng |
-| Caption + Cap-Embedding | keyframe `.webp` | Qwen3-VL-4B → Qwen3-Embedding-4B | câu tiếng Anh + vector 2560 chiều → Milvus `capemb` + ES `caption` |
-| OCR | keyframe `.webp` | Qwen3-VL-4B (prompt "chỉ liệt kê chữ nhìn thấy") | ES `ocr_text` (ngram 2-5) |
-| ASR | audio `.opus` | ChunkFormer (WER 8.31%) | ES `aic_asr` — 111,411 đoạn theo (start, end) |
-| Object + màu | keyframe `.webp` | YOLO (80 lớp COCO) + màu chủ đạo (11 màu cơ bản) + ô lưới 4×4 | ES `objects`, token ghép `cls_grid_color` |
+| 4 nhánh embedding ảnh | keyframe `.webp` | MetaCLIP-2 / PE-Core-L14-336 / BEiT-3 / DINOv3 | vector 1024 chiều/nhánh → FAISS index riêng |
+| Caption + Cap-Embedding | keyframe `.webp` | Qwen3-VL-4B → Qwen3-Embedding-4B | câu tiếng Anh + vector 2560 chiều → FAISS `capemb` + Meilisearch `caption` |
+| OCR | keyframe `.webp` | Qwen3-VL-4B (prompt "chỉ liệt kê chữ nhìn thấy") | Meilisearch `ocr_text` (ngram 2-5) |
+| ASR | audio `.opus` | ChunkFormer (WER 8.31%) | Meilisearch `aic_asr` — 111,411 đoạn theo (start, end) |
+| Object + màu | keyframe `.webp` | YOLO (80 lớp COCO) + màu chủ đạo (11 màu cơ bản) + ô lưới 4×4 | Meilisearch `objects` (cls/grid/color là TỪ RIÊNG, vd "bicycle 2a red") |
 
 **Vì sao tách nhiều nhánh embedding?** Mỗi model "nhìn" ảnh khác nhau (đa ngữ
 vs. chi tiết vs. ensemble) — giai đoạn online sẽ hợp nhất kết quả của tất cả
@@ -110,7 +110,7 @@ bằng RRF thay vì chọn 1 model duy nhất, bù trừ điểm yếu cho nhau.
 ## 2 · Online — Xử lý 1 câu truy vấn
 
 Chạy real-time mỗi lần bấm Tìm kiếm — encode qua GPU Kaggle (không cần GPU
-máy dev), search Milvus/ES song song rồi hợp nhất.
+máy dev), search FAISS/Meilisearch song song rồi hợp nhất.
 
 ```mermaid
 flowchart TD
@@ -128,20 +128,20 @@ flowchart TD
 
   CMC & CEN --> ENC["query_encoders<br/>gọi GPU Kaggle qua ngrok"]:::online
 
-  ENC --> SM["Milvus: metaclip2<br/>maxmean đa mệnh đề"]:::online
-  ENC --> SP["Milvus: pecore<br/>maxmean đa mệnh đề"]:::online
-  ENC --> SB["Milvus: beit3"]:::online
-  ENC --> SC["Milvus: capemb<br/>(câu đầy đủ, không tách)"]:::online
+  ENC --> SM["FAISS: metaclip2<br/>maxmean đa mệnh đề"]:::online
+  ENC --> SP["FAISS: pecore<br/>maxmean đa mệnh đề"]:::online
+  ENC --> SB["FAISS: beit3"]:::online
+  ENC --> SC["FAISS: capemb<br/>(câu đầy đủ, không tách)"]:::online
 
-  OKW --> ESO["ES: OCR — MỖI từ khoá<br/>tra riêng, tránh loãng tín hiệu"]:::online
-  Q --> ESOF["ES: OCR nguyên văn câu<br/>(trọng số thích ứng theo cue)"]:::online
-  APA --> ESA["ES: ASR đa biến thể<br/>→ RRF nội bộ → căn ±2s theo pts_time"]:::online
-  Q -.->|nếu câu nêu rõ vật+màu| ESOB["ES: Object + màu<br/>(wildcard theo token ghép)"]:::online
+  OKW --> MSO["Meili: OCR — MỖI từ khoá<br/>tra riêng, tránh loãng tín hiệu"]:::online
+  Q --> MSOF["Meili: OCR nguyên văn câu<br/>(trọng số thích ứng theo cue)"]:::online
+  APA --> MSA["Meili: ASR đa biến thể<br/>→ RRF nội bộ → căn ±2s theo pts_time"]:::online
+  Q -.->|nếu câu nêu rõ vật+màu| MSOB["Meili: Object + màu<br/>(cls/grid/color là từ riêng)"]:::online
   Q --> ENT["LLM: suy TÊN RIÊNG ẨN<br/>(khác OCR-keyword — cái này SUY LUẬN)"]:::online
-  ENT -.->|chỉ khi confidence=high| ESE["ES: OCR/ASR theo tên suy ra"]:::online
+  ENT -.->|chỉ khi confidence=high| MSE["Meili: OCR/ASR theo tên suy ra"]:::online
 
-  SM & SP & SB & SC & ESO & ESOF & ESA & ESE --> RRF["core.fusion.rrf<br/>Reciprocal Rank Fusion<br/>trọng số riêng theo KIS/QA/TRAKE"]:::online
-  ESOB -.-> RRF
+  SM & SP & SB & SC & MSO & MSOF & MSA & MSE --> RRF["core.fusion.rrf<br/>Reciprocal Rank Fusion<br/>trọng số riêng theo KIS/QA/TRAKE"]:::online
+  MSOB -.-> RRF
 
   RRF --> DEDUP["Dedup theo video<br/>tối đa 8 khung/video"]:::online
   DEDUP --> HYD["Lấy metadata thật<br/>(video, n, frame_idx, pts_time)"]:::online
@@ -153,7 +153,7 @@ flowchart TD
 | Bước | Vì sao thiết kế vậy |
 |---|---|
 | Trích mệnh đề / dịch | Câu dài bị cắt/mờ tín hiệu ở model CLIP-family (giới hạn ~77 token) — LLM tách thành nhiều câu ngắn, mỗi câu tra riêng rồi gộp. |
-| maxmean đa mệnh đề | Mỗi mệnh đề search Milvus riêng (topk rộng) → hợp candidate → điểm = `max + 0.3×mean` qua các mệnh đề khớp — thắng RRF/MAX/MEAN thuần khi đo thật. |
+| maxmean đa mệnh đề | Mỗi mệnh đề search FAISS riêng (topk rộng) → hợp candidate → điểm = `max + 0.3×mean` qua các mệnh đề khớp — thắng RRF/MAX/MEAN thuần khi đo thật. |
 | OCR-keyword riêng lẻ | Đã đo thật: tên riêng hiếm (2/167,850 khung) bị từ phổ biến áp đảo nếu tra chung 1 câu — tách riêng từng từ khoá sửa đúng vấn đề. |
 | ASR theo ý nghĩa | Transcript thật hiếm dùng đúng từ câu hỏi — LLM đóng vai phóng viên diễn đạt lại 3-5 cách, rồi mới tra BM25, fuse nội bộ thành 1 tín hiệu. |
 | Object + màu | CHỈ bật khi câu nêu rõ vật+màu đặc trưng (regex chặt) — vật thể chung chung 1 mình dễ làm loãng vì xuất hiện khắp nơi. |
@@ -190,7 +190,7 @@ flowchart LR
 ```mermaid
 flowchart LR
   classDef online fill:#3a2c12,stroke:#ffb454,color:#ffefd8,font-weight:600;
-  IMG["Khung mẫu<br/>đã chọn từ kết quả"]:::online --> DINO["Encode DINOv3"]:::online --> SIM["Milvus search<br/>collection dinov3"]:::online --> RES["Ảnh tương tự nhất"]:::online
+  IMG["Khung mẫu<br/>đã chọn từ kết quả"]:::online --> DINO["Encode DINOv3"]:::online --> SIM["FAISS search<br/>index dinov3"]:::online --> RES["Ảnh tương tự nhất"]:::online
 ```
 
 ### Submit — đóng gói nộp bài

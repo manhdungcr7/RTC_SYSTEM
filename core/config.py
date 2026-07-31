@@ -132,30 +132,21 @@ LONG_QUERY_CAPEMB_BOOST = 1.0
 LONG_QUERY_CLAUSE_THRESHOLD = 4   # số mệnh đề trở lên mới coi là "query dài"
 
 # ==================== GIỚI HẠN TÀI NGUYÊN MÁY DEV (KHÔNG phải quyết định kiến trúc) ====================
-# Máy dev hiện tại chỉ 15.9GB RAM / 4GB VRAM — nạp CẢ 4 encoder cùng lúc (MetaCLIP-2
-# ~7GB + PE-Core + BEiT-3-subprocess + capemb ~8GB) CỘNG với Milvus/ES (~6.5GB) đã
-# ĐO THẬT gây DPC_WATCHDOG_VIOLATION (BSOD cấp kernel, xem Windows Event Log lúc
-# test) — không phải lỗi code, là giới hạn cứng phần cứng. ĐỂ KIỂM TRA CHẤT LƯỢNG
-# retrieval TRƯỚC KHI quyết định thuê máy mạnh hơn, tắt bớt nhánh PHỤ (giữ nhánh
-# CHÍNH metaclip2 + tín hiệu ES) — bật lại khi có đủ RAM/VRAM (vd máy thuê), CHỈ
-# cần đổi dict này, không cần sửa code khác.
+# ĐÃ ĐỔI SANG FAISS+MEILISEARCH (thay Milvus+Elasticsearch) — xem
+# core/repositories/faiss_repo.py + PIPELINE.md. FAISS chỉ lưu vector thô trong
+# RAM (không HNSW graph, không etcd/MinIO/query-coordinator overhead của Milvus)
+# nên nhẹ hơn đáng kể — bật lại đủ cả 5 nhánh, theo dõi RAM nếu máy vẫn hạn chế
+# thì tắt bớt CHỈ CẦN đổi dict này, không cần sửa code khác.
 ENABLED_BRANCHES = {
     "metaclip2": True,   # nhánh CHÍNH — bắt buộc, quyết định phần lớn chất lượng
-    "pecore": True,      # PLACEHOLDER weight chưa đo — đang thử bật lại (đủ RAM tạm thời)
+    "pecore": True,      # PLACEHOLDER weight chưa đo
     "beit3": True,       # đã đo có lợi (đặc biệt QA)
     "capemb": True,      # đã đo có lợi cho KIS
-    "dinov3": True,      # chỉ dùng cho /similar (image-to-image) — đang thử bật lại
+    "dinov3": True,      # dùng cho /similar (image-to-image)
 }
 # "metaclip2" LUÔN phải True — đây là nhánh bắt buộc, tắt sẽ làm /search mất hết tín hiệu vector.
 #
-# LƯU Ý QUAN TRỌNG (ĐÃ SỬA HIỂU LẦM TRƯỚC ĐÂY): chuyển encoder sang remote (Kaggle,
-# settings.REMOTE_ENCODER_URL) chỉ giải quyết RAM/VRAM của việc NẠP MODEL — KHÔNG
-# giải quyết RAM của MILVUS TỰ GIỮ VECTOR DỮ LIỆU. Milvus vẫn phải load_collection()
-# từng collection ĐANG BẬT vào RAM của chính nó để search được (~1-1.2GB/collection
-# × 167,850 dòng). ĐÃ ĐO THẬT: bật cả 4 (pecore+beit3+capemb+metaclip2, ~4.6GB) làm
-# rootcoord/querycoord Milvus mất kết nối etcd rồi tự thoát (crash) khi RAM host chỉ
-# còn ~1.3GB trống (Chrome+VSCode+Docker/WSL2 đã chiếm phần lớn 15.9GB máy dev) — nên
-# vẫn phải cân nhắc SỐ COLLECTION BẬT dựa trên RAM host thực tế, dù đã dùng remote
-# encoder. dinov3 luôn release (không cần cho KIS/QA/TRAKE) để dư RAM cho các
-# collection còn lại.
-# Nếu tắt remote (bỏ AIC_REMOTE_ENCODER_URL), PHẢI trả 3 dòng trên về False trước khi chạy local.
+# Việc nạp encoder (local vs remote Kaggle, settings.REMOTE_ENCODER_URL) và việc
+# nạp FAISS index là 2 chi phí RAM ĐỘC LẬP — tắt nhánh ở đây tiết kiệm RAM phía
+# FaissRepo (core/repositories/faiss_repo.py chỉ đọc index.faiss của nhánh BẬT),
+# không liên quan tới việc encoder nạp ở đâu.

@@ -18,8 +18,8 @@ import numpy as np
 from core import config as C
 from core.fusion import Hit
 from core.media_index import MediaIndex
-from core.repositories.es_repo import EsRepo
-from core.repositories.milvus_repo import MilvusRepo
+from core.repositories.faiss_repo import FaissRepo
+from core.repositories.meili_repo import MeiliRepo
 
 ASR_ALIGN_WINDOW_S = 2.0
 
@@ -37,7 +37,7 @@ def _normalize01(scores: dict) -> dict:
     return {k: (v - lo) / (hi - lo) for k, v in scores.items()}
 
 
-def _text_bonus_matrix(es_repo: EsRepo, media_index: MediaIndex, video: str,
+def _text_bonus_matrix(es_repo: MeiliRepo, media_index: MediaIndex, video: str,
                         ids: list[str], ns: list[int], event_texts: list[str],
                         per_video_size: int = 200) -> np.ndarray:
     """(n_ev, n_kf) điểm cộng OCR+ASR đã chuẩn hoá, CÙNG THỨ TỰ với `ids`/`ns` (đã
@@ -73,10 +73,10 @@ def _text_bonus_matrix(es_repo: EsRepo, media_index: MediaIndex, video: str,
     return bonus
 
 
-def search_temporal(event_vecs: np.ndarray, milvus_repo: MilvusRepo, collection: str,
+def search_temporal(event_vecs: np.ndarray, milvus_repo: FaissRepo, collection: str,
                      per_event: int = 1500, topk: int = 100,
                      event_texts: list[str] | None = None,
-                     es_repo: EsRepo | None = None,
+                     es_repo: MeiliRepo | None = None,
                      media_index: MediaIndex | None = None) -> list[tuple[float, list[Hit]]]:
     """event_vecs: (n_ev, D) đã encode sẵn (1 vector/sự kiện, thường metaclip2).
     `event_texts`+`es_repo`+`media_index`: TÙY CHỌN — truyền đủ cả 3 thì cộng thêm

@@ -1,87 +1,23 @@
 name: aic-retrieval
 
 services:
-  etcd:
-    image: quay.io/coreos/etcd:v3.5.16
-    container_name: aic-etcd
+  meilisearch:
+    image: getmeili/meilisearch:v1.11
+    container_name: aic-meilisearch
+    # KHÔNG set MEILI_MASTER_KEY ở đây mặc định — set biến môi trường (dù rỗng)
+    # ĐÃ ĐỦ để Meilisearch tự bật yêu cầu xác thực (khác hẳn "không set gì cả"),
+    # đã đo thật gây lỗi 403 invalid_api_key toàn bộ request. Muốn bật khoá thật,
+    # thêm dòng "MEILI_MASTER_KEY: ${AIC_MEILI_KEY}" (không có ":-") vào đây.
     environment:
-      - ETCD_AUTO_COMPACTION_MODE=revision
-      - ETCD_AUTO_COMPACTION_RETENTION=1000
-      - ETCD_QUOTA_BACKEND_BYTES=4294967296
-      - ETCD_SNAPSHOT_COUNT=50000
-    volumes:
-      - ./volumes/etcd:/etcd
-    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
-    healthcheck:
-      test: ["CMD", "etcdctl", "endpoint", "health"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
-
-  minio:
-    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
-    container_name: aic-minio
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MEILI_NO_ANALYTICS: "true"
     ports:
-      - "9001:9001"   # console
+      - "7700:7700"
     volumes:
-      - ./volumes/minio:/minio_data
-    command: minio server /minio_data --console-address ":9001"
+      - ./volumes/meili:/meili_data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
-
-  milvus:
-    image: milvusdb/milvus:v2.4.15
-    container_name: aic-milvus
-    command: ["milvus", "run", "standalone"]
-    environment:
-      ETCD_ENDPOINTS: etcd:2379
-      MINIO_ADDRESS: minio:9000
-    volumes:
-      - ./volumes/milvus:/var/lib/milvus
-    ports:
-      - "19530:19530"   # milvus SDK port
-      - "9091:9091"     # milvus metrics/health
-    depends_on:
-      - etcd
-      - minio
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
-      interval: 30s
-      start_period: 90s
-      timeout: 20s
-      retries: 3
-
-  attu:
-    image: zilliz/attu:v2.4.11
-    container_name: aic-attu
-    environment:
-      MILVUS_URL: milvus:19530
-    ports:
-      - "8000:3000"     # Milvus web UI -> http://localhost:8000
-    depends_on:
-      - milvus
-
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
-    container_name: aic-elasticsearch
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - ES_JAVA_OPTS=-Xms1g -Xmx1g
-    ports:
-      - "9200:9200"
-    volumes:
-      - ./volumes/es:/usr/share/elasticsearch/data
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
-      interval: 30s
-      timeout: 20s
+      test: ["CMD", "curl", "-sf", "http://localhost:7700/health"]
+      interval: 15s
+      timeout: 10s
       retries: 5
 
   backend:
@@ -90,8 +26,9 @@ services:
       dockerfile: docker/Dockerfile.backend
     container_name: aic-backend
     environment:
-      AIC_MILVUS_URI: http://milvus:19530
-      AIC_ES_URL: http://elasticsearch:9200
+      AIC_FAISS_DIR: /faiss
+      AIC_MEILI_URL: http://meilisearch:7700
+      AIC_MEILI_KEY: ${AIC_MEILI_KEY:-}
       AIC_DATA_ROOT: /data
       AIC_ARTIFACTS_ROOT: /artifacts
       # Điền URL/KEY từ notebook Kaggle (indexing/kaggle/11_encode_service.py) —
@@ -105,11 +42,11 @@ services:
     volumes:
       - ../data:/data
       - ../artifacts:/artifacts
+      - ./volumes/faiss:/faiss
     ports:
       - "8080:8080"
     depends_on:
-      - milvus
-      - elasticsearch
+      - meilisearch
 
   frontend:
     build:

@@ -9,8 +9,8 @@ from api.schemas.temporal import TemporalCandidate, TemporalRequest, TemporalRes
 from core.media_index import MediaIndex
 from core.query_encoders import QueryEncoders
 from core.query_service import strip_temporal_framing
-from core.repositories.es_repo import EsRepo
-from core.repositories.milvus_repo import MilvusRepo
+from core.repositories.faiss_repo import FaissRepo
+from core.repositories.meili_repo import MeiliRepo
 from core.temporal import search_temporal
 
 router = APIRouter()
@@ -18,8 +18,8 @@ router = APIRouter()
 
 @router.post("/temporal", response_model=TemporalResponse)
 def temporal(req: TemporalRequest,
-             milvus: MilvusRepo = Depends(get_milvus),
-             es: EsRepo = Depends(get_es),
+             milvus: FaissRepo = Depends(get_milvus),
+             es: MeiliRepo = Depends(get_es),
              encoders: QueryEncoders = Depends(get_encoders),
              media_index: MediaIndex = Depends(get_media_index)) -> TemporalResponse:
     # Cắt khung mẫu "Khoảnh khắc đầu tiên/cuối cùng thấy..." TRƯỚC khi dùng cho cả

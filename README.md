@@ -6,10 +6,15 @@ ASR, vật thể+màu) — **thiết kế "truyền thống có tương tác"**:
 gõ câu mô tả + có thể ghi đè tay OCR/ASR/Object khi biết chính xác cần tìm gì,
 không phải hộp đen tự động hoàn toàn.
 
-Kiến trúc: FastAPI (backend) + React/Vite (frontend) + Milvus (5 collection
-vector: metaclip2/pecore/beit3/capemb/dinov3) + Elasticsearch (OCR/ASR/objects)
-+ 1 notebook Kaggle chạy encoder (GPU free, vì máy dev không đủ VRAM/RAM nạp
-4 model cùng lúc).
+Kiến trúc: FastAPI (backend) + React/Vite (frontend) + FAISS (5 index vector
+in-process: metaclip2/pecore/beit3/capemb/dinov3, không cần server riêng) +
+Meilisearch (OCR/ASR/objects) + 1 notebook Kaggle chạy encoder (GPU free, vì
+máy dev không đủ VRAM/RAM nạp 4 model cùng lúc).
+
+*(Trước dùng Milvus+Elasticsearch — đã đổi sang FAISS+Meilisearch vì máy dev
+RAM hạn chế: Milvus (kèm etcd+MinIO) nhiều lần "healthy" giả — báo sống nhưng
+nội bộ đã hết RAM, treo mọi truy vấn. FAISS/Meilisearch nhẹ hơn nhiều, không
+cần server/cluster phụ trợ, đủ nhanh ở quy mô 167,850 vector — xem PIPELINE.md.)*
 
 📊 Xem **[PIPELINE.md](PIPELINE.md)** — sơ đồ chi tiết toàn bộ thuật toán, từ
 video thô (offline) tới xử lý 1 câu truy vấn (online), có giải thích lý do
@@ -21,9 +26,9 @@ thiết kế từng bước.
 
 - **Docker Desktop** (Windows/Mac) hoặc Docker Engine + Compose (Linux) — bật
   WSL2 backend nếu Windows.
-- **≥ 8GB RAM trống** dành cho Docker sau khi trừ các app khác đang mở (Milvus
-  cần load vector vào RAM của chính nó, không phải VRAM). Máy càng nhiều RAM
-  càng ổn — hệ đã từng crash khi RAM trống < 1.5GB lúc Milvus reload collection.
+- **≥ 4GB RAM trống** dành cho Docker sau khi trừ các app khác đang mở (FAISS
+  nạp thẳng vector vào RAM tiến trình backend, không phải VRAM — nhẹ hơn nhiều
+  so với Milvus trước đây vì không có etcd/MinIO/query-coordinator phụ trợ).
 - Tài khoản **Kaggle** (free) — dùng GPU T4x2 free để chạy encoder, xem mục 4.
 - 1 API key LLM (**Anthropic/OpenAI/Gemini**, chọn 1) — dùng để dịch câu, mở
   rộng câu truy vấn, trích OCR-keyword, sinh biến thể ASR. Không có key nào
@@ -64,22 +69,22 @@ chừng — chạy lại y nguyên lệnh, nó tự tiếp tục từ chỗ dở
 từ đầu. Tổng dữ liệu ~18GB (13GB DB + 5.3GB keyframe) nên tuỳ tốc độ mạng có
 thể mất từ vài chục phút tới vài giờ — cứ để chạy nền, không cần canh chừng.
 
-### 3a. Database đã build sẵn (Milvus + Elasticsearch) — BẮT BUỘC
+### 3a. Database đã build sẵn (FAISS + Meilisearch) — BẮT BUỘC
 
-Repo: **[manhdungcr7/aic2026-milvus-es-db](https://huggingface.co/datasets/manhdungcr7/aic2026-milvus-es-db)**
+Repo: **[manhdungcr7/aic2026-faiss-meili-db](https://huggingface.co/datasets/manhdungcr7/aic2026-faiss-meili-db)**
 — kết quả pipeline offline đã chạy xong (167,850 keyframe đã embed +
-OCR/caption/objects + 111,411 đoạn ASR, ~13GB) — **không cần chạy lại pipeline
+OCR/caption/objects + 111,411 đoạn ASR) — **không cần chạy lại pipeline
 indexing**, chỉ cần tải đúng vào thư mục Docker dùng.
 
 ```bash
-hf download manhdungcr7/aic2026-milvus-es-db \
+hf download manhdungcr7/aic2026-faiss-meili-db \
   --repo-type dataset --local-dir aic-system/docker/volumes
 ```
 
-Kết quả phải có đúng cấu trúc con `docker/volumes/{etcd,minio,milvus,es}/`.
-(Lần đầu setup thì chưa có Docker nào chạy nên cứ tải bình thường. Chỉ cần
-lưu ý nếu SAU NÀY tải lại/cập nhật bộ dữ liệu mới: phải `docker compose stop`
-trước — không tải đè lên volume đang có container ghi vào, dễ hỏng dữ liệu.)
+Kết quả phải có đúng cấu trúc con `docker/volumes/{faiss,meili}/`. (Lần đầu
+setup thì chưa có Docker nào chạy nên cứ tải bình thường. Chỉ cần lưu ý nếu
+SAU NÀY tải lại/cập nhật bộ dữ liệu mới: phải `docker compose stop` trước —
+không tải đè lên volume đang có container Meilisearch ghi vào.)
 
 ### 3b. Keyframe + CSV map — BẮT BUỘC
 
@@ -129,7 +134,7 @@ aic-system/
     ... (các shard raw_* khác)
     videos_full/videos/<video>.mp4
   docker/volumes/
-    etcd/  minio/  milvus/  es/
+    faiss/  meili/
 ```
 
 ---
@@ -185,8 +190,8 @@ cd docker
 docker compose up -d --build
 ```
 
-Lần đầu sẽ build image backend/frontend (vài phút) + tải image Milvus/ES/etcd/
-minio. Theo dõi log:
+Lần đầu sẽ build image backend/frontend (vài phút) + tải image Meilisearch.
+Theo dõi log:
 
 ```bash
 docker compose logs -f backend
@@ -196,8 +201,7 @@ Khi thấy `Application startup complete` là backend sẵn sàng. Mở trình d
 
 - **Frontend (giao diện dùng)**: http://localhost:5173
 - Backend API (debug trực tiếp nếu cần): http://localhost:8080
-- Milvus UI (Attu, xem collection/dữ liệu): http://localhost:8000
-- Elasticsearch: http://localhost:9200
+- Meilisearch (xem index/thử search thô): http://localhost:7700
 
 ### Dừng hệ thống
 
@@ -217,18 +221,23 @@ docker compose up -d --force-recreate backend
 
 ## 7. Xử lý sự cố (đã gặp thật khi phát triển)
 
-- **Container `milvus` tự thoát (exit 137 = OOM-kill, hoặc exit 1 kèm log
-  "disconnected from etcd")**: RAM máy không đủ lúc Milvus tải collection vào
-  RAM của chính nó (không phải RAM Docker Desktop cấp, mà RAM host thật —
-  kiểm tra RAM trống trước khi `docker compose up`). Đóng bớt ứng dụng nặng
-  (trình duyệt nhiều tab, IDE...) rồi `docker compose up -d milvus` lại.
+- **Backend log không hiện gì dù container "Up"**: bình thường — Python
+  buffer stdout khi không gắn TTY, đã set `PYTHONUNBUFFERED=1` trong Dockerfile
+  để giảm độ trễ log, nhưng vẫn có thể trễ vài giây. Kiểm tra bằng
+  `curl http://localhost:8080/health` thay vì chỉ nhìn log nếu nghi ngờ treo.
 - **Backend log lỗi `UnicodeEncodeError`**: đã set `PYTHONIOENCODING=utf-8`
   trong Dockerfile, không cần sửa gì nếu chạy qua Docker (chỉ gặp nếu chạy
   `python -m uvicorn` trực tiếp trên Windows console không phải qua Docker).
 - **`/search` trả 0 kết quả hoặc lỗi 500**: kiểm tra `docker compose logs
   backend` — thường do `AIC_REMOTE_ENCODER_URL` sai/hết hạn (notebook Kaggle
-  đã tắt) hoặc Milvus/ES chưa healthy (`docker compose ps`, đợi cột STATUS
+  đã tắt) hoặc Meilisearch chưa healthy (`docker compose ps`, đợi cột STATUS
   thành `healthy`).
+- **Meilisearch trả lỗi 403 `invalid_api_key`**: đã gặp thật — set biến môi
+  trường `MEILI_MASTER_KEY` (dù để GIÁ TRỊ RỖNG) cũng đủ khiến Meilisearch bật
+  yêu cầu xác thực, khác hẳn KHÔNG set biến đó. `docker-compose.yml` mặc định
+  KHÔNG set biến này (chạy không khoá) — chỉ thêm nếu chủ động muốn bật khoá
+  thật, và phải build lại index từ đầu nếu đổi qua lại giữa 2 chế độ (đã đo
+  thật: đổi chế độ khoá làm Meilisearch coi là instance khác, mất dữ liệu cũ).
 - **Không có API key LLM**: các trường "Mệnh đề tiếng Anh", "Từ khoá OCR
   (LLM trích)" sẽ rỗng — hệ thống vẫn tìm được bằng hình ảnh (metaclip2/
   pecore/beit3/capemb) + OCR/ASR nguyên văn câu tiếng Việt, chỉ mất các bước
