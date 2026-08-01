@@ -245,21 +245,99 @@ docker compose up -d --force-recreate backend
 
 ---
 
-## 8. Dùng giao diện (tóm tắt)
+## 8. Dùng giao diện (chi tiết)
 
-- **Search**: gõ câu mô tả tiếng Việt → chọn loại (KIS/QA/TRAKE) → Top K →
-  bấm Tìm kiếm. Mở "Bộ lọc nâng cao" để tự nhập tay OCR/ASR/Object khi biết
-  chính xác chữ/lời/vật thể cần tìm (bỏ qua đoán tự động — khuyến nghị dùng
-  khi câu mô tả có tên riêng/chữ cụ thể mà bạn tự đọc thấy).
-  - **Object**: chỉ nên dùng khi vật thể + màu ĐẶC TRƯNG (vd "áo đỏ, duy
-    nhất"), tránh gõ 1 danh từ chung chung (vd "person") — dễ làm loãng do
-    vật thể phổ biến xuất hiện khắp nơi.
-- Panel "Chi tiết truy vấn đã dùng" cho xem đúng những gì hệ thống thực sự
-  tra (mệnh đề dịch, từ khoá OCR trích, trọng số từng nguồn) — hữu ích để
-  hiểu VÌ SAO ra kết quả đó.
-- Click 1 kết quả → modal chi tiết: xem frame lớn/video, filmstrip lân cận,
-  nút "🔍 Tìm ảnh giống" (dùng dinov3), nút thêm vào file nộp bài.
-- **Temporal**: tìm chuỗi sự kiện theo đúng thứ tự thời gian trong 1 video
-  (bài TRAKE).
-- **Submit**: gom các frame đã chọn thành file CSV đúng chuẩn BTC, đóng gói
-  nộp bài.
+3 trang: **Search** (KIS/QA + lọc video trước), **Temporal** (TRAKE), **Submit**
+(đóng gói nộp bài). Nguyên tắc xuyên suốt: **mọi bước tự động đều có thể ghi đè
+tay** — máy đoán là mặc định tốt, nhưng khi bạn tự đọc/nghe thấy chính xác cần
+tìm gì thì luôn có ô để nhập thẳng, bỏ qua đoán tự động.
+
+### 8.1. Trang Search
+
+**a) Lọc video trước (tuỳ chọn, thu gọn mặc định — bấm "▸ Lọc video trước" để mở)**
+
+Bước NÀY ĐỘC LẬP với tìm khung hình bên dưới — không bắt buộc phải làm trước.
+Dùng khi bạn muốn thu hẹp phạm vi tìm về 1 nhóm video trước (vd biết chắc đáp
+án nằm trong video nấu ăn, hoặc muốn duyệt nhanh 1 thể loại):
+
+1. Gõ nội dung (tìm theo ASR + caption + tiêu đề gộp của cả video) và/hoặc
+   chọn **thể loại** (Tin tức / Thể thao / Nấu ăn / Giải trí — suy từ kênh
+   YouTube gốc, xem PIPELINE.md) — để trống ô gõ nếu chỉ muốn lọc theo thể loại.
+2. Bấm **"Tìm video"** → hiện NGAY lưới video (ảnh đại diện, tiêu đề, thể loại) —
+   xem kết quả ở bước này mà **không** bị ép làm tiếp gì cả.
+3. Muốn dùng cho bước tìm khung hình: tick chọn video (hoặc "Chọn tất cả"),
+   bấm **"Dùng N video đã chọn làm phạm vi tìm khung hình"**. Phạm vi hiện
+   thành banner trên ô tìm kiếm chính, có nút ✕ để bỏ (quay về tìm toàn kho).
+
+**b) Ô tìm kiếm chính**
+
+- Gõ mô tả (tiếng Việt hoặc Anh) → chọn loại **KIS / QA / TRAKE** (TRAKE nên
+  dùng trang Temporal thay vì đây) → chỉnh **Top K** → tick **"Mở rộng câu
+  (LLM)"** nếu muốn LLM diễn giải thêm câu trước khi tìm.
+- Hàng **"Model"**: tick chọn nhánh embedding nào tham gia — mặc định CHỈ
+  MetaCLIP-2 (nhánh chính, đủ dùng phần lớn trường hợp và nhanh nhất). Tick
+  thêm BEiT-3 / PE-Core / Qwen3-Embedding (caption) / Qwen3-Embedding (ASR ngữ
+  nghĩa) / DINOv3 nếu muốn — mỗi nhánh thêm là 1 lượt gọi model từ xa (Kaggle),
+  chậm hơn nhưng có thể ra kết quả tốt hơn cho câu khó.
+
+**c) "Bộ lọc nâng cao"** (bấm mở rộng)
+
+- **OCR / ASR ghi đè tay**: biết chính xác chữ trên màn hình hoặc câu ai đó
+  nói thì gõ thẳng vào đây — bỏ qua bước LLM/heuristic tự đoán.
+- **"Lọc chắc chắn theo OCR/ASR"** (checkbox): khi bật, nếu OCR/ASR khớp với
+  độ tin cậy cao, các nhánh còn lại (hình ảnh...) sẽ CHỈ tìm trong đúng những
+  khung hình đã khớp (có nới thêm sai số — OCR vài khung lân cận, ASR ±8 giây,
+  vì lời nói có thể trước/sau cảnh minh hoạ) thay vì chỉ cộng điểm mềm như
+  bình thường. Có banner xanh báo khi cơ chế này thật sự kích hoạt; nếu OCR/ASR
+  không đủ tin cậy, hệ thống tự quay về kiểu tìm mềm như cũ (không lỗi).
+- **Object/màu/vị trí**: nhấp chọn từ danh sách tiếng Việt (không cần gõ tay,
+  không cần nhớ tên tiếng Anh) — chọn vật thể (có ô gõ để lọc nhanh trong danh
+  sách), chọn màu, và tuỳ chọn bấm ô trên lưới 4×4 để chỉ định vùng trong khung
+  hình (vd góc trên-trái).
+- **Ảnh tham chiếu (DINOv3)**: upload 1 ảnh (vd ảnh mẫu BTC đưa, hoặc ảnh bạn
+  tìm được) — hệ thống tìm khung hình GIỐNG ảnh này, **kết hợp cùng** mô tả
+  chữ và mọi tín hiệu khác trong RRF chung (không phải công cụ tách riêng).
+- **Trọng số từng tín hiệu**: mỗi tín hiệu (metaclip2, pecore, beit3, capemb,
+  dinov3, asr ngữ nghĩa, ocr, ocr từ khoá, asr, object, entity) có checkbox
+  "ghi đè" + thanh trượt 0–3. KHÔNG tích = dùng số mặc định đã đo sẵn theo loại
+  câu (KIS/QA/TRAKE); tích rồi kéo thanh trượt để tự tăng/giảm mức độ ảnh
+  hưởng của tín hiệu đó cho đúng lần tìm này. Dùng khi thấy 1 tín hiệu bị lấn
+  át (vd câu chỉ dựa vào lời thoại → tăng "asr" lên, giảm "metaclip2" xuống).
+
+**d) Kết quả**
+
+- Panel **"Chi tiết truy vấn đã dùng"**: xem đúng những gì hệ thống THỰC SỰ đã
+  tra (mệnh đề đã dịch/tách, từ khoá OCR đã trích, trọng số + số kết quả từng
+  nguồn) — để hiểu VÌ SAO ra kết quả đó, và biết chỗ nào nên ghi đè tay.
+- Click 1 kết quả → modal chi tiết: ảnh lớn + video (tua tới đúng giây), dải
+  khung hình lân cận (filmstrip, bấm để đổi khung đang chọn), nút **"🔍 Tìm ảnh
+  giống"** (tìm nhanh ảnh giống chính khung này), nút **"+ Thêm frame này"**
+  vào file nộp bài đang soạn.
+- **"Tìm theo ảnh"** (cuối trang): công cụ RIÊNG, đơn giản — upload 1 ảnh, tìm
+  khung hình giống ảnh đó, KHÔNG kèm mô tả chữ (khác ô "Ảnh tham chiếu" ở bộ
+  lọc nâng cao, vốn kết hợp CẢ chữ lẫn ảnh trong cùng 1 lượt tìm).
+
+### 8.2. Trang Temporal (TRAKE — chuỗi sự kiện theo thứ tự thời gian)
+
+- Nhập từng sự kiện **E1, E2, ...** theo đúng thứ tự thời gian xảy ra trong
+  video (bấm "+ Thêm sự kiện" / "− Bớt sự kiện" để đổi số lượng, tối thiểu 2).
+- Nút **⚓** cạnh mỗi sự kiện: chọn ĐÚNG 2 sự kiện làm "neo" cho bước lọc video
+  ứng viên ban đầu — mặc định dùng sự kiện đầu + cuối, nhưng nếu 1 cặp sự kiện
+  Ở GIỮA đặc trưng/dễ nhận diện hơn (vd "4 chân chạm đất" dễ nhận hơn "lân xoay
+  vòng trên cột") thì tự chọn cặp đó thay vào.
+- **"▸ Ghi đè OCR/ASR theo từng sự kiện"**: mỗi sự kiện có thể tự nhập riêng
+  chữ/lời cần khớp CHO ĐÚNG sự kiện đó (khác câu mô tả chung) — bỏ trống thì
+  tự đoán theo câu sự kiện như bình thường.
+- **"Tắt phạt khoảng cách"**: mặc định các sự kiện được ưu tiên xảy ra GẦN
+  nhau về thời gian trong video (DANTE DP). Tick tắt khi các sự kiện có thể
+  cách xa nhau (vd "vượt lên" rồi rất lâu sau mới "về đích").
+- Kết quả: mỗi ứng viên là 1 video + đúng số khung hình theo thứ tự E1..En,
+  click từng khung để xem chi tiết như trang Search.
+
+### 8.3. Trang Submit
+
+- Gom các frame đã "+ Thêm" từ trang Search/Temporal thành từng file CSV theo
+  đúng tên truy vấn BTC yêu cầu (vd `query-p1-1-kis.csv`) — xem/sửa bảng trước
+  khi chốt, hệ thống tự báo lỗi format (thiếu cột, sai số dòng, answer quá dài...).
+- Bấm đóng gói để tải file `.zip` chứa thư mục `submission/` đúng chuẩn nộp
+  Codabench (không nén trực tiếp `.csv`, xem `core/submit.py`).
