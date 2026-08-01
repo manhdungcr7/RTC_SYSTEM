@@ -30,12 +30,22 @@ def temporal(req: TemporalRequest,
     texts = [f"{req.context} {e}".strip() if req.context else e for e in cleaned]
     event_vecs = encoders.metaclip2.encode(texts)
 
-    # event_texts=texts (câu gốc, thường tiếng Việt) -> khớp OCR/ASR (cũng tiếng
-    # Việt) — xem docstring core.temporal cho lý do thêm bước này (cận cảnh
-    # tay+dao+thớt nhìn giống hệt nhau giữa các nguyên liệu khác nhau, cần chữ/lời
-    # nói để phân biệt).
+    # OCR/ASR mặc định dùng câu event đã cắt khung mẫu — NHƯNG người vận hành có
+    # thể ghi đè tay RIÊNG từng sự kiện (req.ocr_queries[i]/asr_queries[i]) khi
+    # biết chính xác chữ/lời cần tìm, bỏ qua đoán tự động cho đúng sự kiện đó
+    # (các sự kiện không ghi đè vẫn dùng tự động — không phải tất-cả-hoặc-không-gì).
+    def _override(manual: list[str] | None, i: int, fallback: str) -> str:
+        if manual and i < len(manual) and manual[i].strip():
+            return manual[i]
+        return fallback
+
+    ocr_texts = [_override(req.ocr_queries, i, t) for i, t in enumerate(texts)]
+    asr_texts = [_override(req.asr_queries, i, t) for i, t in enumerate(texts)]
+
+    anchor = tuple(req.anchor_indices) if req.anchor_indices and len(req.anchor_indices) == 2 else None
     results = search_temporal(event_vecs, milvus, "metaclip2", per_event=req.per_event, topk=req.topk,
-                               event_texts=texts, es_repo=es, media_index=media_index)
+                               ocr_texts=ocr_texts, asr_texts=asr_texts, es_repo=es,
+                               media_index=media_index, lam=req.lambda_penalty, anchor_indices=anchor)
 
     candidates = [
         TemporalCandidate(

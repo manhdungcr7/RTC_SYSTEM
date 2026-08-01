@@ -64,6 +64,32 @@ class RemoteBranchEncoder:
         v = vecs.max(axis=0)
         return v / (np.linalg.norm(v) + 1e-8)
 
+
+class RemoteImageEncoder:
+    """Client gọi `/encode_image` (DINOv3, PHÍA ẢNH — không có text tower) qua
+    `indexing/kaggle/11_encode_service.py` — dùng cho "tìm ảnh giống" khi người
+    dùng UPLOAD ảnh ngoài chưa có sẵn trong index (khác `/similar` thường, vốn chỉ
+    lấy lại vector ĐÃ index sẵn qua `FaissRepo.fetch_vector_by_id`, xem
+    api/routers/similar.py). KHÔNG có bản in-process local — backend container
+    không cài torch/transformers (nhẹ, xem requirements-docker.txt) nên tính năng
+    này CẦN REMOTE_ENCODER_URL đang chạy."""
+
+    def __init__(self, base_url: str, api_key: str):
+        import requests
+        self._requests = requests
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+
+    def encode_image(self, image_bytes: bytes, filename: str = "image.jpg") -> np.ndarray:
+        r = self._requests.post(
+            f"{self.base_url}/encode_image",
+            files={"file": (filename, image_bytes)},
+            headers={"X-API-Key": self.api_key},
+            timeout=60,
+        )
+        r.raise_for_status()
+        return np.array(r.json()["vector"], dtype=np.float32)
+
 # Cắt token THẬT SỰ diễn ra native trong từng tokenizer (HF processor `truncation=True,
 # max_length=...` cho MetaCLIP-2; `SimpleTokenizer.__call__` tự cắt về context_length cho
 # PE-Core) — cả hai đều GIỮ ĐẦU câu theo mặc định (chuẩn CLIP: cắt đuôi, giữ [SOT]..đầu
@@ -296,6 +322,7 @@ class QueryEncoders:
         self.pecore: PeCoreEncoder | None = None
         self.beit3: Beit3BridgeEncoder | None = None
         self.capemb: CapEmbEncoder | None = None
+        self.dinov3_image: RemoteImageEncoder | None = None   # chỉ có khi dùng REMOTE encoder
 
     def load_all(self) -> "QueryEncoders":
         """Chỉ nạp encoder có C.ENABLED_BRANCHES[tên]=True — nhánh tắt giữ None,
@@ -319,6 +346,8 @@ class QueryEncoders:
                 self.beit3 = RemoteBranchEncoder(url, key, "beit3")
             if C.ENABLED_BRANCHES.get("capemb", True):
                 self.capemb = RemoteBranchEncoder(url, key, "capemb")
+            if C.ENABLED_BRANCHES.get("dinov3", True):
+                self.dinov3_image = RemoteImageEncoder(url, key)
             return self
 
         if C.ENABLED_BRANCHES.get("metaclip2", True):

@@ -31,6 +31,7 @@ MEILI_URL = os.environ.get("AIC_MEILI_URL", "http://localhost:7700")
 MEILI_KEY = os.environ.get("AIC_MEILI_KEY", "")
 MEILI_INDEX_FRAMES = "aic_frames"
 MEILI_INDEX_ASR = "aic_asr"
+MEILI_INDEX_VIDEOS = "aic_videos"   # lọc video trước (mục 3) — xem indexing/build_video_index.py
 
 # ---- Media (đã có sẵn trên đĩa, KHÔNG cần tải lại) ----
 # DATA_ROOT/ARTIFACTS_ROOT cũng env-overridable — trong container Docker, data thật

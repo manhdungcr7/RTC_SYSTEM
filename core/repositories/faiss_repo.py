@@ -118,6 +118,50 @@ class FaissRepo:
             return None
         return self._indices[collection].reconstruct(int(p)).astype(np.float32)
 
+    def has_branch(self, branch: str) -> bool:
+        """True nếu branch đã nạp (file index/meta tồn tại VÀ được bật trong
+        ENABLED_BRANCHES) — dùng để BẬT/TẮT 1 tín hiệu tuỳ chọn (vd asr_emb) mà
+        không cần sửa code gọi khi chưa build xong index cho branch đó."""
+        return branch in self._indices
+
+    def get_meta_extra(self, collection: str, doc_id: str, *cols: str) -> tuple | None:
+        """Đọc thêm CỘT NGOÀI id/video/n/frame_idx của 1 doc_id (vd start/end của
+        asr_emb) — meta.parquet có thể có cột riêng theo từng branch."""
+        p = self._id_pos[collection].get(doc_id)
+        if p is None:
+            return None
+        row = self._meta[collection].iloc[p]
+        return tuple(row[c] for c in cols)
+
+    def ids_for_videos(self, collection: str, videos: list[str]) -> set[str]:
+        """Toàn bộ id thuộc 1 tập video — dùng để mở rộng `video_scope` (lọc video
+        trước, mục 3) thành tập id cụ thể cho `search_within_ids`."""
+        meta = self._meta[collection]
+        ids = meta["id"].values
+        out: set[str] = set()
+        for v in videos:
+            for p in self._video_pos[collection].get(v, []):
+                out.add(ids[p])
+        return out
+
+    def search_within_ids(self, collection: str, vector: np.ndarray, allowed_ids,
+                           topk: int) -> list[tuple[str, float]]:
+        """Cosine similarity CHÍNH XÁC (không xấp xỉ) chỉ trên tập `allowed_ids` —
+        dùng khi đã lọc ứng viên trước (video_scope mục 3, hoặc strict OCR/ASR
+        filter mục 4) nên không cần/không nên search toàn bộ index nữa. O(|allowed_ids|)
+        reconstruct — chấp nhận được vì tập đã lọc luôn nhỏ hơn nhiều so với toàn
+        kho (167,850)."""
+        id_pos = self._id_pos[collection]
+        positions = [id_pos[i] for i in allowed_ids if i in id_pos]
+        if not positions:
+            return []
+        idx = self._indices[collection]
+        vecs = np.stack([idx.reconstruct(int(p)) for p in positions]).astype(np.float32)
+        sims = vecs @ np.asarray(vector, dtype=np.float32)
+        order = np.argsort(-sims)[:topk]
+        ids_arr = self._meta[collection]["id"].values
+        return [(ids_arr[positions[i]], float(sims[i])) for i in order]
+
     def videos_from_topk(self, collection: str, vector: np.ndarray, per_event: int) -> list[str]:
         """Danh sách video (dedup, GIỮ THỨ TỰ rank) trong top-per_event — dùng cho
         boundary-anchor TRAKE."""

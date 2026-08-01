@@ -5,6 +5,10 @@ xem core/repositories/faiss_repo.py). Output: aic-system/docker/volumes/faiss/
 <branch>/{index.faiss, meta.parquet} — bind-mount thẳng vào backend container,
 KHÔNG cần server riêng.
 
++ 1 nhánh TÙY CHỌN "asr_emb" (semantic ASR — xem core/asr_align.py,
+indexing/kaggle/12_asr_embed.py) nếu artifacts/asr_emb/ đã có dữ liệu, bỏ qua
+êm nếu chưa (không chặn build 5 nhánh chính).
+
 DEDUP: giống hệt load_to_milvus.py — L25_a1/L25_b là bản sao 100% của L25_a
 (TransNetV2 chạy deterministic nên frame_idx khớp tuyệt đối), giữ dòng đầu tiên,
 bỏ dòng trùng dựa trên feat_index.parquet.
@@ -45,7 +49,7 @@ def load_dedup_mask(index_paths: list[Path]) -> tuple[np.ndarray, pd.DataFrame]:
 
 
 def write_branch(branch: str, ids: list[str], videos: list[str], ns: list[int],
-                  frame_idxs: list[int], vecs: np.ndarray):
+                  frame_idxs: list[int], vecs: np.ndarray, extra_cols: dict | None = None):
     out_dir = OUT_DIR / branch
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -59,6 +63,9 @@ def write_branch(branch: str, ids: list[str], videos: list[str], ns: list[int],
     faiss.write_index(index, str(out_dir / "index.faiss"))
 
     meta = pd.DataFrame({"id": ids, "video": videos, "n": ns, "frame_idx": frame_idxs})
+    if extra_cols:
+        for col, vals in extra_cols.items():
+            meta[col] = vals
     meta.to_parquet(out_dir / "meta.parquet", index=False)
     print(f"  --> '{branch}': {index.ntotal:,} vector, dim={vecs.shape[1]} -> {out_dir}")
 
@@ -102,6 +109,22 @@ def main():
     cap_vecs_dedup = cap_vecs[joined["pos"].values]
     write_branch("capemb", cap_ids, joined["video"].tolist(), joined["n"].astype(int).tolist(),
                  joined["frame_idx"].astype(int).tolist(), cap_vecs_dedup)
+
+    print("=" * 60, "\n[4/4] Build asr_emb (TÙY CHỌN — semantic ASR, xem asr_align.py)\n", "=" * 60)
+    asr_dir = ARTIFACTS / "asr_emb"
+    asr_npy = asr_dir / "feat_asremb.npy"
+    asr_idx_path = asr_dir / "feat_index.parquet"
+    if not asr_npy.exists() or not asr_idx_path.exists():
+        print(f"  --> bỏ qua: chưa có {asr_npy} (chạy indexing/kaggle/12_asr_embed.py trước).")
+    else:
+        asr_vecs = np.load(asr_npy)
+        asr_index = pd.read_parquet(asr_idx_path)   # cột: video, seg_idx, start, end
+        assert asr_vecs.shape[0] == len(asr_index), "feat_asremb.npy và feat_index.parquet lệch dòng"
+        asr_ids = [f"{r.video}:seg{int(r.seg_idx):05d}" for r in asr_index.itertuples()]
+        n_dummy = [-1] * len(asr_index)   # ASR segment KHÔNG map 1:1 keyframe -> không có n/frame_idx
+        write_branch("asr_emb", asr_ids, asr_index["video"].tolist(), n_dummy, n_dummy, asr_vecs,
+                     extra_cols={"start": asr_index["start"].astype(float).tolist(),
+                                 "end": asr_index["end"].astype(float).tolist()})
 
     print("\n>>> XONG. Index nằm ở:", OUT_DIR)
 

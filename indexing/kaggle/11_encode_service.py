@@ -27,7 +27,16 @@ API:
              -> {"vectors": [[...], ...]}   # (n, dim) — KHÔNG pool sẵn (kể cả
                 beit3) — phía local tự pool/maxmean, encode service chỉ lo vector
                 hoá, giữ hợp đồng API đơn giản/đồng nhất cho cả 4 nhánh.
-  GET  /health -> {"status": "ok", "branches": [...]}
+  POST /encode_image  multipart/form-data, field "file" = ảnh (jpg/png/webp...)
+                header: X-API-Key: <api_key>
+             -> {"vector": [...]}   # (dim,) — DINOv3, dùng cho "tìm ảnh giống"
+                khi người dùng UPLOAD ảnh ngoài (không có sẵn trong index) — xem
+                api/routers/similar.py::similar_upload. Encode PHÍA ẢNH duy nhất
+                — không có text tower nên không nằm trong /encode.
+  GET  /health -> {"status": "ok", "branches": [...], "image_branches": [...]}
+
+DINOv3 là model "gated" trên HuggingFace — cần Kaggle Secret "HF_TOKEN" (Add-ons
+-> Secrets -> thêm + bật Attach cho notebook này), giống notebook 04_embed_dinov3.py.
 ================================================================================
 """
 import os
@@ -60,7 +69,13 @@ def sh(cmd, check=False):
 # ==================== 1. CÀI ĐẶT ====================
 print("=" * 70, "\n[1/5] Cai dat goi can thiet\n", "=" * 70, flush=True)
 sh(f"{sys.executable} -m pip install -q -U 'transformers>=4.57' 'sentence-transformers>=3.0' "
-   f"fastapi uvicorn pyngrok einops ftfy regex huggingface_hub")
+   f"fastapi uvicorn pyngrok einops ftfy regex huggingface_hub python-multipart")
+# Pillow KHÔNG được để "-U" tự do (bản mới nhất đổi API nội bộ _typing._Ink, phá
+# torchvision.utils import ImageDraw -> ImportError khi transformers tải image
+# processor bất kỳ, kể cả MetaCLIP-2 không liên quan gì tới DINOv3). Ghim bản ổn
+# định GIỐNG indexing/kaggle/02_embed.py/04_embed_dinov3.py — ĐÃ GẶP THẬT lỗi
+# này khi thêm pillow không ghim version vào lệnh cài ở trên.
+sh(f"{sys.executable} -m pip install -q 'pillow==11.1.0'")
 
 import torch  # noqa: E402
 
@@ -73,10 +88,10 @@ for i in range(N_GPU):
 # 4 model cùng lúc (~20GB tổng). Chỉ 1 GPU -> tất cả dồn vào đó (T4 16GB đơn lẻ
 # vẫn đủ cho TỪNG model một lúc gọi, chỉ hơi chật nếu nạp đồng thời).
 if N_GPU >= 2:
-    DEV = {"metaclip2": "cuda:0", "pecore": "cuda:0", "beit3": "cuda:1", "capemb": "cuda:1"}
+    DEV = {"metaclip2": "cuda:0", "pecore": "cuda:0", "dinov3": "cuda:0", "beit3": "cuda:1", "capemb": "cuda:1"}
 else:
     dev0 = "cuda:0" if N_GPU >= 1 else "cpu"
-    DEV = {"metaclip2": dev0, "pecore": dev0, "beit3": dev0, "capemb": dev0}
+    DEV = {"metaclip2": dev0, "pecore": dev0, "dinov3": dev0, "beit3": dev0, "capemb": dev0}
 print(f"  Phan bo GPU: {DEV}", flush=True)
 
 
@@ -130,6 +145,47 @@ def encode_pecore(texts: list[str]) -> np.ndarray:
     tokens = pc_tokenizer(texts).to(DEV["pecore"])
     feat = pc_model.encode_text(tokens, normalize=True)
     return feat.float().cpu().numpy().astype(np.float32)
+
+
+# ==================== 3b. NẠP DINOv3 (image-only, cho "tìm ảnh giống" khi upload) ====================
+print("=" * 70, "\n[3b/5] Nap DINOv3 (anh gated - can HF_TOKEN)\n", "=" * 70, flush=True)
+_hf_token = None
+try:
+    from kaggle_secrets import UserSecretsClient  # noqa: E402
+    _hf_token = UserSecretsClient().get_secret("HF_TOKEN")
+except Exception:
+    _hf_token = os.environ.get("HF_TOKEN")
+if _hf_token:
+    from huggingface_hub import login  # noqa: E402
+    login(token=_hf_token)
+    print("  Da dang nhap HuggingFace bang HF_TOKEN.", flush=True)
+else:
+    print("  [CANH BAO] KHONG tim thay HF_TOKEN — DINOv3 (gated) se loi 403 khi tai. "
+          "Vao Add-ons -> Secrets -> them 'HF_TOKEN' + bat Attach cho notebook nay. "
+          "/encode_image se tra loi 503 cho toi khi model nap duoc.", flush=True)
+
+_DINOV3_ID = "facebook/dinov3-vitl16-pretrain-lvd1689m"
+dinov3_model = None
+dinov3_proc = None
+try:
+    from transformers import AutoImageProcessor  # noqa: E402
+    dinov3_proc = AutoImageProcessor.from_pretrained(_DINOV3_ID)
+    # fp16 THUAN gay NaN 100% tren T4 (da xac nhan that o notebook 04) -> fp32.
+    dinov3_model = AutoModel.from_pretrained(_DINOV3_ID, dtype=torch.float32).to(DEV["dinov3"]).eval()
+    print(f"  DINOv3 san sang tren {DEV['dinov3']} (fp32)", flush=True)
+except Exception as e:
+    print(f"  [LOI] Khong nap duoc DINOv3 ({type(e).__name__}: {e}) — /encode_image se tra 503.", flush=True)
+
+
+@torch.no_grad()
+def encode_image_dinov3(pil_img) -> np.ndarray:
+    inp = dinov3_proc(images=[pil_img], return_tensors="pt").to(DEV["dinov3"])
+    out = dinov3_model(**inp)
+    feat = getattr(out, "pooler_output", None)
+    if feat is None:
+        feat = out.last_hidden_state[:, 1:, :].mean(dim=1)
+    feat = feat / feat.norm(dim=-1, keepdim=True).clamp_min(1e-8)
+    return feat.float().cpu().numpy().astype(np.float32)[0]
 
 
 # ==================== 4. NAP BEIT-3 ====================
@@ -225,7 +281,10 @@ ENCODERS = {
 
 # ==================== 6. FASTAPI + NGROK ====================
 print("=" * 70, "\n[6/6] Khoi dong API + ngrok\n", "=" * 70, flush=True)
-from fastapi import FastAPI, Header, HTTPException  # noqa: E402
+import io  # noqa: E402
+
+from fastapi import FastAPI, File, Header, HTTPException, UploadFile  # noqa: E402
+from PIL import Image  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
 app = FastAPI(title="AIC Encode Service (Kaggle)")
@@ -238,7 +297,8 @@ class EncodeRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "branches": list(ENCODERS.keys())}
+    return {"status": "ok", "branches": list(ENCODERS.keys()),
+             "image_branches": ["dinov3"] if dinov3_model is not None else []}
 
 
 @app.post("/encode")
@@ -252,6 +312,21 @@ def encode(req: EncodeRequest, x_api_key: str = Header(default="")):
         return {"vectors": []}
     vecs = fn(req.texts)
     return {"vectors": vecs.tolist()}
+
+
+@app.post("/encode_image")
+async def encode_image(file: UploadFile = File(...), x_api_key: str = Header(default="")):
+    if x_api_key != API_KEY:
+        raise HTTPException(401, "sai API key")
+    if dinov3_model is None:
+        raise HTTPException(503, "DINOv3 chua nap duoc (kiem tra Kaggle Secret HF_TOKEN + Attach)")
+    raw = await file.read()
+    try:
+        img = Image.open(io.BytesIO(raw)).convert("RGB")
+    except Exception as e:
+        raise HTTPException(400, f"khong doc duoc anh: {e}")
+    vec = encode_image_dinov3(img)
+    return {"vector": vec.tolist()}
 
 
 def _run_server():

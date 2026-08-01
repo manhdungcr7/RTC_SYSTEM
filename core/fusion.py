@@ -36,7 +36,8 @@ def rrf(rank_lists: list[list[str]], k: int = C.RRF_K,
 
 def maxmean_clauses(clause_vecs: np.ndarray, milvus_repo: FaissRepo, collection: str,
                      topk: int = C.MAXMEAN_TOPK_PER_CLAUSE,
-                     alpha: float = C.MAXMEAN_ALPHA) -> list[tuple[str, float]]:
+                     alpha: float = C.MAXMEAN_ALPHA,
+                     allowed_ids=None) -> list[tuple[str, float]]:
     """maxmean đa mệnh đề CỦA CÙNG 1 query, trên 1 collection (thường: metaclip2).
 
     Hệ cũ có ma trận đầy đủ trong RAM nên tính max/mean trên TOÀN BỘ N keyframe.
@@ -47,10 +48,16 @@ def maxmean_clauses(clause_vecs: np.ndarray, milvus_repo: FaissRepo, collection:
 
     score = max_c cos(c,kf) + alpha * mean_c cos(c,kf) — công thức port nguyên
     (engine.py:216), đã đo thắng RRF/MAX/MEAN thuần trên benchmark manual.
-    """
+
+    `allowed_ids`: TÙY CHỌN — khi có (video_scope mục 3, hoặc strict OCR/ASR
+    filter mục 4), search CHÍNH XÁC (search_within_ids) chỉ trong tập này thay vì
+    search gần đúng toàn kho — đúng đắn hơn khi tập đã lọc còn nhỏ."""
     if clause_vecs.shape[0] == 0:
         return []
-    rows = milvus_repo.search_many_scored(collection, clause_vecs, topk)
+    if allowed_ids is not None:
+        rows = [milvus_repo.search_within_ids(collection, vec, allowed_ids, topk) for vec in clause_vecs]
+    else:
+        rows = milvus_repo.search_many_scored(collection, clause_vecs, topk)
     per_id: dict[str, list[float]] = {}
     for row in rows:
         for doc_id, dist in row:

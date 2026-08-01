@@ -11,6 +11,8 @@ export function useSearch() {
   const [clausesEn, setClausesEn] = useState<string[]>([]);
   const [ocrKeywords, setOcrKeywords] = useState<string[]>([]);
   const [signalsUsed, setSignalsUsed] = useState<SignalInfo[]>([]);
+  const [strictFilterApplied, setStrictFilterApplied] = useState(false);
+  const [strictFilterPoolSize, setStrictFilterPoolSize] = useState<number | null>(null);
 
   const runSearch = useCallback(async (req: SearchRequest) => {
     if (!req.query.trim()) return;
@@ -23,6 +25,8 @@ export function useSearch() {
       setClausesEn(res.clauses_en);
       setOcrKeywords(res.ocr_keywords);
       setSignalsUsed(res.signals_used);
+      setStrictFilterApplied(res.strict_filter_applied);
+      setStrictFilterPoolSize(res.strict_filter_pool_size);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setHits([]);
@@ -31,5 +35,8 @@ export function useSearch() {
     }
   }, []);
 
-  return { hits, loading, error, clausesMetaclip2, clausesEn, ocrKeywords, signalsUsed, runSearch };
+  return {
+    hits, loading, error, clausesMetaclip2, clausesEn, ocrKeywords, signalsUsed,
+    strictFilterApplied, strictFilterPoolSize, runSearch,
+  };
 }

@@ -13,6 +13,14 @@ Không được lẫn hai loại để tránh tưởng nhầm placeholder là đ
 # OCR THÍCH ỨNG THEO LOẠI QUERY: KIS mạnh gây hại (0.25 trung tính, 2.0 -> tụt);
 # QA mạnh CỨU (2.0 -> AIC gấp ~12 lần so với 0.25). Xem system/aic/config.py gốc.
 OCR_WEIGHT = {"kis": 0.25, "qa": 2.0, "trake": 0.25}
+# trake: ĐÃ THỬ tăng 0.25->2.0 để "cứu" video đúng khi nó đã vào được candidate
+# pool nhưng vẫn thua video sai -> KẾT QUẢ NGƯỢC (video sai được cộng điểm còn
+# NHIỀU hơn vì nó cũng khớp OCR/ASR giả — do Meilisearch mặc định chỉ cần khớp
+# 1 PHẦN từ trong câu, ví dụ "cắt nấm" khớp bất kỳ video nào có chữ "cắt" dù
+# không có "nấm"). Gốc rễ thật là ở TẦNG KHỚP TỪ chứ không phải trọng số — đã
+# sửa bằng strict=True (matchingStrategy="all") trong core/temporal.py, nên trả
+# về baseline 0.25 (KIS/QA benchmark). Tăng lại weight chỉ nên thử SAU KHI đã đo
+# strict-matching qua nhiều query, không tăng mù theo trọng số nữa.
 OCR_TEXT_WEIGHT = 0.25
 
 # OCR thích ứng THEO TỪNG QUERY (cue chữ trong câu -> tăng hẳn 1.5, đo +0.01 AIC,
@@ -34,7 +42,16 @@ OCR_ADAPTIVE_HIGH_W = 1.5
 
 # ASR (frame-level nhờ có timestamp thật): KIS w=0.15 -> AIC 0.5895->0.6211;
 # QA w=1.0 -> AIC 0.4444->0.4778.
-ASR_WEIGHT = {"kis": 0.15, "qa": 1.0, "trake": 0.15}
+ASR_WEIGHT = {"kis": 0.15, "qa": 1.0, "trake": 0.15}  # trake: về baseline, xem comment OCR_WEIGHT
+
+# PLACEHOLDER — CHƯA ĐO: ASR NGỮ NGHĨA (nhánh FAISS "asr_emb", Qwen3-Embedding-4B
+# — xem core/asr_align.py::search_asr_semantic_as_frames, indexing/kaggle/
+# 12_asr_embed.py). Khác ASR_WEIGHT ở trên (khớp TỪ, Meilisearch) — nhánh này
+# khớp Ý NGHĨA, bổ sung cho nhau chứ không thay thế (2 tín hiệu ASR cùng tồn tại
+# trong /search). Đặt tạm BẰNG ASR_WEIGHT làm điểm khởi đầu hợp lý (cùng loại tín
+# hiệu ASR) — CẦN A/B qua pipeline thật, KHÔNG dùng số này để kết luận gì trước
+# khi đo.
+ASR_EMB_WEIGHT = {"kis": 0.15, "qa": 1.0, "trake": 0.15}
 
 # BEiT-3 ensemble: KIS w=0.2 -> +0.013 AIC; QA w=1.5 -> +0.138 AIC (+27%!, COCO-ft
 # bắt chi tiết nhỏ/chữ tốt hơn KIS thị giác thuần).
@@ -122,8 +139,18 @@ TRANSLATE_FOR = {"metaclip2": False, "beit3": True, "pecore": True, "capemb": Fa
 # thật ở P7 trước khi tin số này.
 PECORE_WEIGHT = {"kis": 0.3, "qa": 0.3, "trake": 0.3}
 
-# DINOv3 KHÔNG tham gia RRF text-search — chỉ dùng cho /similar (image-to-image
-# thuần, không có text tower) nên không cần trọng số fusion.
+# TRỌNG SỐ metaclip2 — TRƯỚC ĐÂY hardcode 1.0 thẳng trong api/routers/search.py
+# (nhánh CHÍNH, luôn coi là mốc 1.0 để so trọng số khác). Đưa vào config để có
+# thể GHI ĐÈ ĐỘNG (req.weights, xem mục "TRỌNG SỐ ĐỘNG" cuối file) giống mọi
+# nhánh khác — giá trị mặc định GIỮ NGUYÊN 1.0 (không đổi hành vi cũ).
+METACLIP2_WEIGHT = {"kis": 1.0, "qa": 1.0, "trake": 1.0}
+
+# PLACEHOLDER — CHƯA ĐO: DINOv3 giờ THÊM vào RRF fusion chung của /search (mục
+# "tích hợp DINOv3 vào chung" — trước đây CHỈ dùng cho /similar độc lập) khi
+# request có ảnh tham chiếu (req.ref_video/ref_n HOẶC req.ref_image_b64, xem
+# api/routers/search.py). Đặt tạm thấp hơn metaclip2 vì đây là tín hiệu THỊ GIÁC
+# THUẦN theo 1 ảnh mẫu cụ thể — CẦN A/B trước khi tin số này.
+DINOV3_WEIGHT = {"kis": 0.5, "qa": 0.5, "trake": 0.5}
 
 # Long-query capemb boost: khi query dài (nhiều mệnh đề), capemb là nhánh DUY NHẤT
 # thấy trọn câu (không bị cắt token) -> có thể tăng trọng số tương đối. CHƯA BẬT
@@ -143,6 +170,10 @@ ENABLED_BRANCHES = {
     "beit3": True,       # đã đo có lợi (đặc biệt QA)
     "capemb": True,      # đã đo có lợi cho KIS
     "dinov3": True,      # dùng cho /similar (image-to-image)
+    "asr_emb": True,     # semantic ASR (TÙY CHỌN) — an toàn để True dù CHƯA build
+                          # xong index: FaissRepo._load_branch() tự bỏ qua êm nếu
+                          # thiếu file, core.asr_align.search_asr_semantic_as_frames()
+                          # tự trả [] nếu branch chưa nạp. Xem indexing/kaggle/12_asr_embed.py.
 }
 # "metaclip2" LUÔN phải True — đây là nhánh bắt buộc, tắt sẽ làm /search mất hết tín hiệu vector.
 #
@@ -150,3 +181,38 @@ ENABLED_BRANCHES = {
 # nạp FAISS index là 2 chi phí RAM ĐỘC LẬP — tắt nhánh ở đây tiết kiệm RAM phía
 # FaissRepo (core/repositories/faiss_repo.py chỉ đọc index.faiss của nhánh BẬT),
 # không liên quan tới việc encoder nạp ở đâu.
+
+# ==================== LỌC VIDEO TRƯỚC (mục 3) ====================
+# BTC KHÔNG cung cấp trường "thể loại" (category) tường minh trong metadata —
+# đã kiểm tra thật 873/873 file media-info: chỉ có author/title/description/
+# keywords/publish_date, KHÔNG có category_id/categories. NHƯNG toàn bộ dữ liệu
+# chỉ có ĐÚNG 7 kênh YouTube, mỗi kênh nội dung RẤT nhất quán (đã xem mẫu title
+# từng kênh) -> dùng "author" làm proxy thể loại đáng tin cậy, gộp về nhóm lớn.
+VIDEO_CATEGORY_MAP = {
+    "60 Giây Official": "Tin tức",
+    "Báo Thanh Niên": "Tin tức",
+    "Báo Tuổi Trẻ": "Tin tức",
+    "HTV Sports": "Thể thao",
+    "ViVU TV": "Nấu ăn",
+    "HTV Giải Trí": "Giải trí",
+    "HTV Entertainment": "Giải trí",
+}
+VIDEO_CATEGORIES = sorted(set(VIDEO_CATEGORY_MAP.values()))   # ["Giải trí","Nấu ăn","Thể thao","Tin tức"]
+
+# ==================== STRICT OCR/ASR FILTER (mục 4) ====================
+# Khi OCR/ASR khớp với điểm >= ngưỡng này, coi là "CHẮC CHẮN" -> thay vì chỉ
+# CỘNG trọng số vào RRF (soft fusion như trước), giới hạn hẳn các nhánh thị giác
+# CHỈ search trong tập khung hình đã khớp (± sai số) — xem
+# api/routers/search.py (req.strict_text_filter). PLACEHOLDER — ngưỡng đặt theo
+# trực giác (Meilisearch _rankingScore đã tự nhiên nằm [0,1], strict=True matching
+# càng chặt điểm càng gần 1 khi khớp thật) — CẦN A/B trước khi tin số này.
+OCR_FILTER_CONFIDENCE = 0.85
+ASR_FILTER_CONFIDENCE = 0.85
+# OCR gắn CHẶT vào đúng khung hình khớp (chữ hiện đúng lúc đó) -> sai số nhỏ, chỉ
+# nới thêm vài khung lân cận (chống trường hợp OCR miss 1 khung do mờ/chuyển cảnh).
+OCR_FILTER_MARGIN_FRAMES = 2
+# ASR thì LỜI NÓI có thể ĐI TRƯỚC hoặc SAU khung hình minh hoạ nội dung đó khá xa
+# (người dẫn nói xong mới cắt cảnh, hoặc cảnh lên trước rồi mới thuyết minh) -> nới
+# sai số RỘNG HƠN hẳn mức ±2s mặc định của core.asr_align (đó là cho fusion mềm,
+# đây là filter CỨNG nên cần dư ra để không lỡ mất khung đúng).
+ASR_FILTER_MARGIN_S = 8.0
