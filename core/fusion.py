@@ -34,7 +34,7 @@ def rrf(rank_lists: list[list[str]], k: int = C.RRF_K,
     return out
 
 
-def maxmean_clauses(clause_vecs: np.ndarray, milvus_repo: FaissRepo, collection: str,
+def maxmean_clauses(clause_vecs: np.ndarray, faiss_repo: FaissRepo, collection: str,
                      topk: int = C.MAXMEAN_TOPK_PER_CLAUSE,
                      alpha: float = C.MAXMEAN_ALPHA,
                      allowed_ids=None) -> list[tuple[str, float]]:
@@ -55,9 +55,9 @@ def maxmean_clauses(clause_vecs: np.ndarray, milvus_repo: FaissRepo, collection:
     if clause_vecs.shape[0] == 0:
         return []
     if allowed_ids is not None:
-        rows = [milvus_repo.search_within_ids(collection, vec, allowed_ids, topk) for vec in clause_vecs]
+        rows = [faiss_repo.search_within_ids(collection, vec, allowed_ids, topk) for vec in clause_vecs]
     else:
-        rows = milvus_repo.search_many_scored(collection, clause_vecs, topk)
+        rows = faiss_repo.search_many_scored(collection, clause_vecs, topk)
     per_id: dict[str, list[float]] = {}
     for row in rows:
         for doc_id, dist in row:
@@ -69,6 +69,114 @@ def maxmean_clauses(clause_vecs: np.ndarray, milvus_repo: FaissRepo, collection:
         scored.append((doc_id, float(arr.max() + alpha * arr.mean())))
     scored.sort(key=lambda x: -x[1])
     return scored
+
+
+def maxmean_clauses_detailed(clause_vecs: np.ndarray, faiss_repo: FaissRepo, collection: str,
+                              topk: int = C.MAXMEAN_TOPK_PER_CLAUSE,
+                              alpha: float = C.MAXMEAN_ALPHA,
+                              allowed_ids=None,
+                              clause_weights: list[float] | None = None,
+                              ) -> tuple[list[tuple[str, float]], dict[str, list[float]]]:
+    """Như maxmean_clauses() nhưng TRẢ THÊM điểm của TỪNG MỆNH ĐỀ cho từng khung
+    hình — đây là nguồn dữ liệu cho dòng "Theo mệnh đề" trong bảng Vì sao (P3),
+    công cụ chẩn đoán quan trọng nhất: thấy mệnh đề nào yếu thì biết ngay nên
+    viết lại mệnh đề đó hay hạ trọng số nó, thay vì chỉ biết "kết quả sai".
+
+    `clause_weights`: trọng số RIÊNG từng mệnh đề (người dùng chỉnh trong
+    ClauseEditor) — nhân vào điểm cosine TRƯỚC khi lấy max/mean. None = đều 1.0.
+
+    Trả (scored_sorted, per_clause) với per_clause[id] = [điểm mệnh đề 0, 1, ...]
+    (NaN ở mệnh đề mà khung hình đó không lọt top-`topk` — phân biệt rõ "không
+    xuất hiện" với "điểm 0", xem lý do trong maxmean_clauses)."""
+    n_clauses = clause_vecs.shape[0]
+    if n_clauses == 0:
+        return [], {}
+    if allowed_ids is not None:
+        rows = [faiss_repo.search_within_ids(collection, vec, allowed_ids, topk) for vec in clause_vecs]
+    else:
+        rows = faiss_repo.search_many_scored(collection, clause_vecs, topk)
+
+    weights = clause_weights if clause_weights else [1.0] * n_clauses
+    per_clause: dict[str, list[float]] = {}
+    for ci, row in enumerate(rows):
+        w = weights[ci] if ci < len(weights) else 1.0
+        for doc_id, dist in row:
+            arr = per_clause.get(doc_id)
+            if arr is None:
+                arr = [float("nan")] * n_clauses
+                per_clause[doc_id] = arr
+            arr[ci] = float(dist) * w
+
+    scored = []
+    for doc_id, arr in per_clause.items():
+        present = [v for v in arr if v == v]      # loại NaN (v != v chỉ đúng với NaN)
+        if not present:
+            continue
+        a = np.array(present)
+        scored.append((doc_id, float(a.max() + alpha * a.mean())))
+    scored.sort(key=lambda x: -x[1])
+    return scored, per_clause
+
+
+def fuse_with_explain(signals: list[tuple[str, list[tuple[str, float]], float]],
+                       k: int = C.RRF_K, method: str = "rrf",
+                       ) -> tuple[dict[str, float], dict[str, list[dict]]]:
+    """Gộp đa tín hiệu VÀ giữ lại phân rã đóng góp của từng nhánh cho từng khung
+    hình — thay `rrf()` khi cần minh bạch (P3). `signals`: list
+    (tên_nhánh, [(id, điểm_thô) đã sort giảm dần], trọng_số).
+
+    method="rrf": đóng góp = w/(k+rank+1) — KHÔNG phụ thuộc thang điểm thô nên
+    trộn được cosine với _rankingScore của Meilisearch (đây là lý do RRF là mặc
+    định). method="weighted_sum": đóng góp = w * điểm_thô đã chuẩn hoá min-max
+    TRONG TỪNG NHÁNH (so sánh chéo nhánh chỉ có nghĩa sau khi chuẩn hoá).
+
+    Trả (điểm_gộp, phân_rã) với phân_rã[id] = [{branch, rank, raw, weight, rrf}]."""
+    fused: dict[str, float] = {}
+    detail: dict[str, list[dict]] = {}
+
+    for branch, scored, w in signals:
+        if not scored:
+            continue
+        if method == "weighted_sum":
+            raws = [s for _, s in scored]
+            lo, hi = min(raws), max(raws)
+            span = (hi - lo) if (hi - lo) > 1e-9 else 1.0
+        for rank0, (doc_id, raw) in enumerate(scored):
+            if method == "weighted_sum":
+                contrib = w * ((raw - lo) / span)
+            else:
+                contrib = w / (k + rank0 + 1)
+            fused[doc_id] = fused.get(doc_id, 0.0) + contrib
+            detail.setdefault(doc_id, []).append({
+                "branch": branch, "rank": rank0 + 1, "raw": float(raw),
+                "weight": float(w), "rrf": float(contrib),
+            })
+    return fused, detail
+
+
+def dedup_by_time(hits: list[Hit], pts_of, window_s: float) -> list[Hit]:
+    """Gộp các khung hình CÙNG VIDEO cách nhau < window_s giây làm một (giữ khung
+    điểm cao nhất) — khác dedup_by_video (giới hạn theo SỐ LƯỢNG): ở đây mục tiêu
+    là bỏ các khung gần như trùng nhau về nội dung do nằm sát nhau về thời gian,
+    trả lại chỗ trong trang kết quả cho cảnh THẬT SỰ khác.
+
+    `pts_of(video, n) -> float|None` — thiếu pts_time thì giữ nguyên khung đó
+    (không đoán, không loại nhầm)."""
+    if window_s <= 0:
+        return hits
+    kept_by_video: dict[str, list[float]] = {}
+    out: list[Hit] = []
+    for h in hits:                      # hits đã sort theo điểm giảm dần
+        t = pts_of(h.video, h.n)
+        if t is None:
+            out.append(h)
+            continue
+        times = kept_by_video.setdefault(h.video, [])
+        if any(abs(t - kt) < window_s for kt in times):
+            continue
+        times.append(t)
+        out.append(h)
+    return out
 
 
 def dedup_by_video(hits: list[Hit], max_per_video: int = C.DEDUP_DEFAULT) -> list[Hit]:
@@ -84,26 +192,3 @@ def dedup_by_video(hits: list[Hit], max_per_video: int = C.DEDUP_DEFAULT) -> lis
             seen[h.video] = c + 1
     return out
 
-
-def superglobal_rerank(qvec: np.ndarray, cand_ids: list[str], cand_vecs: np.ndarray,
-                        k_neighbor: int = C.SUPERGLOBAL_K) -> tuple[list[str], np.ndarray]:
-    """Port NGUYÊN từ engine.py:32 — GIỮ TẮT (config.USE_SUPERGLOBAL=False). Đo cô
-    lập dương nhưng đo qua pipeline thật thì hại (RRF đầy đủ đã cho tín hiệu sắc,
-    làm mượt bằng láng giềng làm nhoè tín hiệu đã sắc) — chỉ bật lại nếu A/B lại
-    qua pipeline thật cho kết quả dương."""
-    if len(cand_ids) < 2:
-        return cand_ids, np.zeros(len(cand_ids))
-    k = min(k_neighbor, len(cand_ids))
-    sims = cand_vecs @ qvec
-    top_k = np.argsort(-sims)[:k]
-    expanded_q = cand_vecs[top_k].max(axis=0)
-    expanded_q = expanded_q / (np.linalg.norm(expanded_q) + 1e-8)
-
-    sim_matrix = cand_vecs @ cand_vecs.T
-    nn_idx = np.argsort(-sim_matrix, axis=1)[:, :k]
-    refined = cand_vecs[nn_idx].mean(axis=1)
-    refined = refined / (np.linalg.norm(refined, axis=1, keepdims=True) + 1e-8)
-
-    s_final = (refined @ qvec + cand_vecs @ expanded_q) / 2
-    order = np.argsort(-s_final)
-    return [cand_ids[i] for i in order], s_final[order]

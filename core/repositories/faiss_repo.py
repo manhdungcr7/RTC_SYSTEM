@@ -34,13 +34,36 @@ class FaissRepo:
                 continue
             self._load_branch(branch)
 
+    @staticmethod
+    def _read_index(idx_path: Path) -> faiss.Index:
+        """Nạp index bằng MEMORY-MAP thay vì đọc hết vào RAM.
+
+        VÌ SAO: 6 nhánh × 167.850 vector = ~5,6GB nếu nạp thẳng vào RAM. Trên máy
+        15GB đang chạy cả Docker/trình duyệt/VSCode, việc này thường xuyên OOM
+        ngay lúc khởi động ("Cannot allocate memory") — ĐÃ GẶP THẬT nhiều lần.
+
+        Với mmap, hệ điều hành ánh xạ file và chỉ nạp trang nhớ THẬT SỰ được
+        chạm tới, tự giải phóng khi thiếu bộ nhớ. IndexFlat đọc tuần tự lúc tìm
+        kiếm nên rất hợp: sau vài truy vấn đầu, trang nóng đã nằm sẵn trong bộ
+        đệm của hệ điều hành, tốc độ tương đương nạp thẳng — nhưng KHÔNG còn
+        chiếm cứng RAM và khởi động nhanh hơn hẳn.
+
+        Rơi về cách nạp thường nếu mmap thất bại (định dạng index không hỗ trợ),
+        để không bao giờ chết vì một tối ưu."""
+        try:
+            return faiss.read_index(str(idx_path), faiss.IO_FLAG_MMAP | faiss.IO_FLAG_READ_ONLY)
+        except Exception as e:
+            print(f"[faiss_repo] mmap không dùng được cho {idx_path.name} "
+                  f"({type(e).__name__}) -> nạp thẳng vào RAM")
+            return faiss.read_index(str(idx_path))
+
     def _load_branch(self, branch: str):
         idx_path = self.faiss_dir / branch / "index.faiss"
         meta_path = self.faiss_dir / branch / "meta.parquet"
         if not idx_path.exists() or not meta_path.exists():
             print(f"[faiss_repo] bỏ qua '{branch}' — thiếu file index/meta ({idx_path})")
             return
-        idx = faiss.read_index(str(idx_path))
+        idx = self._read_index(idx_path)
         meta = pd.read_parquet(meta_path)
         assert idx.ntotal == len(meta), \
             f"'{branch}': index.faiss có {idx.ntotal} dòng nhưng meta.parquet có {len(meta)} dòng — lệch nhau"
@@ -117,6 +140,17 @@ class FaissRepo:
         if p is None:
             return None
         return self._indices[collection].reconstruct(int(p)).astype(np.float32)
+
+    def all_videos(self, collection: str = "metaclip2") -> list[str]:
+        """Toàn bộ tên video có trong index — dùng cho "đảo ngược phạm vi" (loại
+        trừ 1 nhóm video thì phải biết tập đầy đủ để lấy phần bù)."""
+        if collection not in self._video_pos:
+            return []
+        return sorted(self._video_pos[collection].keys())
+
+    def branch_sizes(self) -> dict[str, int]:
+        """{tên nhánh: số vector} — cho /health và bảng Kết nối."""
+        return {b: int(idx.ntotal) for b, idx in self._indices.items()}
 
     def has_branch(self, branch: str) -> bool:
         """True nếu branch đã nạp (file index/meta tồn tại VÀ được bật trong

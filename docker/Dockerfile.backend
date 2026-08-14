@@ -7,6 +7,13 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# ffmpeg: trích khung hình tại GIÂY BẤT KỲ (GET /media/frame_at) — cần cho
+# filmstrip bước 1s/5s và cho việc soi khoảnh khắc rơi GIỮA hai keyframe thưa.
+# Không có nó thì hệ thống chỉ xem được đúng 167.850 keyframe đã trích sẵn.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements-docker.txt .
 RUN pip install --no-cache-dir -r requirements-docker.txt
 

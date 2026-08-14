@@ -136,11 +136,15 @@ def main():
     wait_task(client, client.create_index("aic_asr", {"primaryKey": "_mid"}))
 
     frames_idx = client.index("aic_frames")
-    wait_task(client, frames_idx.update_filterable_attributes(["video"]))
+    # `id`/`n` filterable: cần cho get_frame_docs() (lấy caption/OCR của đúng 1 tập
+    # khung hình để hiện nội dung cạnh kết quả) và all_ocr_for_video() (Workbench).
+    wait_task(client, frames_idx.update_filterable_attributes(["video", "id", "n"]))
     wait_task(client, frames_idx.update_searchable_attributes(["ocr_text", "caption", "objects"]))
 
     asr_idx = client.index("aic_asr")
-    wait_task(client, asr_idx.update_filterable_attributes(["video"]))
+    # `start`/`end` filterable: cần cho asr_segments_for_video() (lời thoại quanh
+    # 1 khung hình) và all_asr_for_video() (transcript đầy đủ trong Workbench).
+    wait_task(client, asr_idx.update_filterable_attributes(["video", "start", "end"]))
     wait_task(client, asr_idx.update_searchable_attributes(["text"]))
 
     print("=" * 60, "\n[4/4] Bulk index (batch 5000)\n", "=" * 60)

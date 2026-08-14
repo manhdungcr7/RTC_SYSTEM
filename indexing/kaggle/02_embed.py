@@ -11,7 +11,22 @@ CẤU HÌNH KAGGLE:
 
 MODEL (đổi ở biến MODEL_ID nếu A/B):
   - MetaCLIP-2 (mặc định, đa ngữ → KHỎI dịch tiếng Việt): facebook/metaclip-2-worldwide-huge-378
+  - Bản NẶNG NHẤT (4B tham số, ViT-bigG-14-378): facebook/metaclip-2-worldwide-giant-378
+    -> đặt env MODEL_ID=facebook/metaclip-2-worldwide-giant-378 và TAG=metaclip2giant (KHÔNG dùng
+       lại TAG=metaclip2 vì đây là nhánh khác, giữ song song để A/B/tránh ghi đè feat cũ).
+    -> checkpoint này CẦN transformers cài từ git source (script tự phát hiện qua MODEL_ID và cài
+       đúng bản), và dùng bfloat16 (an toàn số học hơn float16 với model to, script tự chuyển).
+    -> nên hạ BATCH xuống (VD BATCH=16) vì model to hơn nhiều, VRAM T4 15GB dễ tràn nếu giữ BATCH=64.
   - A/B khác: đổi MODEL_ID + BACKEND (xem dưới)
+
+CHẠY SONG SONG NHIỀU ACCOUNT KAGGLE (VD 4 account rảnh):
+  - Notebook 01 đã chia sẵn keyframe thành dataset aic-kf-account0..account4 (mỗi cái ~3 shard) hoặc
+    aic-kf-<shard> riêng lẻ — chia đều 14 shard cho 4 notebook (VD mỗi notebook Add 3-4 dataset shard
+    khác nhau), mỗi notebook chạy độc lập với cùng MODEL_ID=...giant-378, TAG=metaclip2giant.
+  - Mỗi notebook ra 1 dataset output riêng (VD aic-feat-giant-p1..p4) — tải cả 4 về máy, gộp bằng
+    cách nối (concat theo đúng thứ tự) feat_metaclip2giant.npy + feat_index.parquet của từng phần
+    (giống cách đã gộp objects_all.jsonl/captions_*.jsonl nhiều account trước đây), rồi build lại
+    FAISS index (indexing/build_faiss.py) cho collection mới.
 
 ĐẦU RA (/kaggle/working/emb → Save Version → Kaggle Dataset "aic-feat-<shard>"):
   feat_<tag>.npy        (N, D) float16 — vector ẢNH, ĐÃ L2-normalize
@@ -55,7 +70,13 @@ def sh(cmd, check=False):
 
 # ==================== 1. CÀI ĐẶT + NẠP MODEL ====================
 print("=" * 60, "\n[1/4] Cài đặt + nạp MetaCLIP-2\n", "=" * 60, flush=True)
-sh(f"{sys.executable} -m pip install -q -U 'transformers>=4.57' pyarrow pandas")
+_IS_GIANT = "giant" in MODEL_ID.lower()
+if _IS_GIANT:
+    # checkpoint giant-378 (4B tham số) chưa lên bản release PyPI ổn định lúc viết script này —
+    # cần cài transformers từ git source theo đúng model card HuggingFace.
+    sh(f"{sys.executable} -m pip install -q -U 'git+https://github.com/huggingface/transformers.git' pyarrow pandas")
+else:
+    sh(f"{sys.executable} -m pip install -q -U 'transformers>=4.57' pyarrow pandas")
 sh(f"{sys.executable} -m pip install -q 'pillow==11.1.0'")  # GHIM bản ổn định — bản Pillow mới nhất
                                                               # (do -U kéo theo) bị lỗi thiếu PIL._typing._Ink
 
@@ -66,22 +87,24 @@ print(f"  transformers = {transformers.__version__}", flush=True)
 
 from transformers import AutoModel, AutoProcessor
 dev = "cuda" if torch.cuda.is_available() else "cpu"
+# giant-378 (4B) an toàn số học hơn ở bf16 (model card khuyến nghị); huge-378 giữ fp16 như đã đo ổn định.
+_DTYPE = torch.bfloat16 if _IS_GIANT else torch.float16
 try:
     proc = AutoProcessor.from_pretrained(MODEL_ID)
-    model = AutoModel.from_pretrained(MODEL_ID, torch_dtype=torch.float16).to(dev).eval()
+    model = AutoModel.from_pretrained(MODEL_ID, torch_dtype=_DTYPE).to(dev).eval()
 except Exception as e:
     raise RuntimeError(
         f"Không nạp được {MODEL_ID} ({type(e).__name__}: {e}). "
         f"MetaCLIP-2 cần transformers rất mới — thử 'Restart & Run All' sau khi pip -U, "
         f"hoặc kiểm tra tên checkpoint trên HuggingFace.")
-print(f"  model trên {dev} | {torch.cuda.get_device_name(0) if dev=='cuda' else ''}", flush=True)
+print(f"  model trên {dev} | {torch.cuda.get_device_name(0) if dev=='cuda' else ''} | dtype={_DTYPE}", flush=True)
 
 
 @torch.no_grad()
 def encode_images(pil_list):
     inp = proc(images=pil_list, return_tensors="pt").to(dev)
     if dev == "cuda":
-        inp = {k: (v.half() if v.dtype == torch.float32 else v) for k, v in inp.items()}
+        inp = {k: (v.to(_DTYPE) if v.dtype == torch.float32 else v) for k, v in inp.items()}
     out = model.get_image_features(**inp)
     if torch.is_tensor(out):
         feat = out
@@ -162,7 +185,7 @@ import pandas as pd
 df = pd.DataFrame([(v, n, fi) for (v, n, fi, _) in items], columns=["video", "n", "frame_idx"])
 df.to_parquet(OUT / "feat_index.parquet")
 info = {"model": MODEL_ID, "tag": TAG, "n": len(items), "dim": int(out.shape[1]),
-        "dtype": "float16", "minutes": round((time.time() - t0) / 60, 1)}
+        "dtype": "float16", "compute_dtype": str(_DTYPE), "minutes": round((time.time() - t0) / 60, 1)}
 json.dump(info, open(OUT / "emb_info.json", "w"), indent=2)
 mb = (OUT / f"feat_{TAG}.npy").stat().st_size / 1e6
 print(f"  feat_{TAG}.npy: {out.shape} ({mb:.0f} MB) | {info['minutes']} phút", flush=True)

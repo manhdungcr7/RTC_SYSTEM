@@ -1,3 +1,4 @@
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
@@ -8,7 +9,7 @@ import { defineConfig } from "vite";
 // (gõ tay hoặc F5) sẽ bị forward nhầm sang backend (chỉ nhận POST) -> lỗi
 // "Method Not Allowed". /media không đụng route trang nào nên giữ nguyên.
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
     proxy: {

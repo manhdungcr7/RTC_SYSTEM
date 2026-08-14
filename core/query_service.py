@@ -60,7 +60,17 @@ Quy tắc:
 - GIỮ NGUYÊN mọi chi tiết phân biệt: màu sắc, số lượng, vị trí (trái/phải/giữa), tư thế, quần áo, vật thể cụ thể, chữ trên màn hình. ĐỪNG tóm gọn hay bỏ bớt chi tiết — chi tiết càng nhiều càng dễ tìm đúng.
 - Chỉ bỏ: câu hỏi, phần suy luận/kiến thức ngoài hình (thứ không nhìn thấy trực tiếp).
 - Mỗi mệnh đề nên đầy đủ (8-20 từ), không phải cụm ngắn cụt.
-- Tối đa 8 phần tử. Chỉ trả JSON, không giải thích."""
+
+QUY TẮC TUYỆT ĐỐI — KHÔNG ĐƯỢC BỊA:
+- CHỈ tách những gì câu gốc ĐÃ NÊU. TUYỆT ĐỐI không thêm màu sắc, số lượng, vị
+  trí, hành động, bối cảnh, đồ vật hay chữ trên màn hình mà câu gốc không nói.
+- Câu gốc NGẮN/ít chi tiết -> trả về ÍT mệnh đề (kể cả chỉ 1-2), KHÔNG được bịa
+  thêm chi tiết cho đủ số lượng. Thiếu mệnh đề còn hơn bịa sai — bịa một chi
+  tiết không có trong ảnh sẽ làm hệ thống tìm ra khung hình SAI.
+- Không được suy diễn chi tiết cụ thể hơn mức câu gốc cho phép (vd câu gốc chỉ
+  nói "áo màu tối" thì không được đổi thành "áo đen").
+
+Tối đa 8 phần tử — đây là TRẦN, không phải MỤC TIÊU. Chỉ trả JSON, không giải thích."""
 
 
 def _provider() -> str | None:
@@ -210,16 +220,24 @@ def clauses_metaclip2(query_vi: str, use_expansion: bool = True) -> list[str]:
 EXPAND_PROMPT = """Mô tả cảnh video (tiếng Việt hoặc Anh):
 \"\"\"{q}\"\"\"
 
-Sinh {n} câu mô tả THỊ GIÁC bằng TIẾNG ANH cho đúng cảnh này, ĐA DẠNG góc nhìn để
-tìm ảnh (mỗi câu ≤ 18 từ, độc lập). Trả JSON: {{"variants": ["...", ...]}}
+Sinh {n} câu mô tả THỊ GIÁC bằng TIẾNG ANH cho ĐÚNG cảnh này, mỗi câu ≤ 18 từ,
+diễn đạt theo cách khác nhau để tăng cơ hội khớp ảnh.
+Trả JSON: {{"variants": ["...", ...]}}
 
-Mỗi câu nhấn một khía cạnh khác nhau:
-- chủ thể + hành động chính (literal)
-- bối cảnh / địa điểm / loại chương trình (news studio, lecture, outdoor...)
-- màu sắc + vị trí + số lượng đối tượng nổi bật
-- nếu có chữ/logo/tiêu đề trên màn hình: mô tả nội dung chữ đó
-- một cách diễn đạt đồng nghĩa (paraphrase)
-GIỮ chi tiết phân biệt (màu/số/vị trí). Chỉ trả JSON."""
+QUY TẮC TUYỆT ĐỐI — KHÔNG ĐƯỢC BỊA:
+- CHỈ diễn đạt lại những gì câu gốc ĐÃ NÊU. TUYỆT ĐỐI không thêm màu sắc, số
+  lượng, vị trí, chữ trên màn hình, tên riêng hay bối cảnh mà câu gốc không nói.
+- Câu gốc không nói màu -> mọi câu đều KHÔNG nhắc màu. Không nói có chữ trên
+  màn hình -> KHÔNG câu nào nhắc tới chữ/tiêu đề/logo.
+- Các câu KHÔNG được mâu thuẫn nhau (không câu này "áo đỏ", câu kia "áo xanh").
+- Chi tiết câu gốc CÓ nêu thì phải GIỮ nguyên trong hầu hết các câu.
+
+Cách tạo khác biệt hợp lệ giữa các câu (không thêm thông tin mới):
+- đổi từ đồng nghĩa, đổi cấu trúc câu
+- đổi mức chi tiết: câu ngắn gọn nhất <-> câu đầy đủ nhất
+- đổi góc nhìn ngôn ngữ: tả chủ thể / tả hành động / tả toàn cảnh
+
+Bịa thêm chi tiết làm hệ thống tìm ra ảnh SAI. Chỉ trả JSON."""
 
 
 def expand_query(query: str, n: int = 6) -> list[str]:

@@ -23,22 +23,6 @@ OCR_WEIGHT = {"kis": 0.25, "qa": 2.0, "trake": 0.25}
 # strict-matching qua nhiều query, không tăng mù theo trọng số nữa.
 OCR_TEXT_WEIGHT = 0.25
 
-# OCR thích ứng THEO TỪNG QUERY (cue chữ trong câu -> tăng hẳn 1.5, đo +0.01 AIC,
-# kích đúng câu nặng-chữ, không hại câu thị giác khác).
-OCR_ADAPTIVE_TEXT_CUES = (
-    r"slide|băng rôn|khẩu hiệu|tin giả|bảng nguyên liệu|bảng giá|"
-    r"['\"“”][^'\"“”]{2,}['\"“”]"
-)
-
-# PLACEHOLDER — CHƯA ĐO: trọng số cho nhánh OCR-từ-khoá (query_service.
-# extract_ocr_keywords, mỗi từ khoá tra RIÊNG rồi fuse RRF — KHÁC OCR_WEIGHT ở
-# trên là tra nguyên văn câu). Phát hiện qua test thật: câu dài tra nguyên văn làm
-# tên riêng hiếm ("FANA", 2/167,850 frame) bị chìm ngoài top-500 vì từ chung
-# chung áp đảo — tra riêng từng từ khoá sửa đúng vấn đề này. Đặt cao hơn OCR_WEIGHT
-# thường vì đây là tín hiệu CHÍNH XÁC hơn (khớp tên riêng cụ thể, không phải BM25
-# mờ trên cả câu) — CẦN A/B qua pipeline thật ở P7 trước khi tin số này.
-OCR_KEYWORD_WEIGHT = {"kis": 1.5, "qa": 3.0, "trake": 1.5}
-OCR_ADAPTIVE_HIGH_W = 1.5
 
 # ASR (frame-level nhờ có timestamp thật): KIS w=0.15 -> AIC 0.5895->0.6211;
 # QA w=1.0 -> AIC 0.4444->0.4778.
@@ -72,10 +56,6 @@ COLOR_CUES = (
 # quan. Hạ xuống dưới metaclip2 để object CHỈ cộng điểm bổ trợ, không lấn át.
 COLOR_WEIGHT = 0.6
 
-# Named-entity/knowledge resolution (LLM suy tên riêng từ mô tả mơ hồ -> OCR/ASR):
-# +0.006 AIC trên KIS 32 câu, an toàn (gate confidence=="high" đủ chọn lọc).
-USE_ENTITY_RESOLUTION = True
-ENTITY_WEIGHT = 1.5
 
 # Caption t2c (giờ là nhánh Milvus `capemb`, Qwen3-Embedding-4B thay SmolVLM2+ST cũ
 # — trọng số port nguyên từ đo lần 2 qua FULL production stack): KIS +0.031 AIC,
@@ -99,13 +79,6 @@ TRAKE_LAMBDA = 0.001
 # milvus_repo.videos_from_topk giữ thứ tự) — 150 đủ rộng cho @top5-10 kết quả.
 MAX_TRAKE_CANDIDATES = 150
 
-# SuperGlobal Reranking: đo CÔ LẬP dương (+6.6-8.3%) nhưng đo qua PIPELINE THẬT thì
-# lợi ích biến mất / hit@1 giảm 8 điểm % (RRF đầy đủ đã cho tín hiệu sắc, làm mượt
-# bằng láng giềng làm NHOÈ tín hiệu đã sắc). GIỮ TẮT — chỉ bật lại nếu A/B lại qua
-# pipeline thật (không phải test cô lập) cho kết quả dương.
-USE_SUPERGLOBAL = False
-SUPERGLOBAL_TOPM = 50
-SUPERGLOBAL_K = 2
 
 # Submit (theo quy chế BTC — xem core/submit.py)
 MAX_SUBMIT_ROWS = 100
@@ -152,11 +125,6 @@ METACLIP2_WEIGHT = {"kis": 1.0, "qa": 1.0, "trake": 1.0}
 # THUẦN theo 1 ảnh mẫu cụ thể — CẦN A/B trước khi tin số này.
 DINOV3_WEIGHT = {"kis": 0.5, "qa": 0.5, "trake": 0.5}
 
-# Long-query capemb boost: khi query dài (nhiều mệnh đề), capemb là nhánh DUY NHẤT
-# thấy trọn câu (không bị cắt token) -> có thể tăng trọng số tương đối. CHƯA BẬT
-# (P7, cần đo) — giữ hệ số trung tính 1.0 cho tới khi có bằng chứng.
-LONG_QUERY_CAPEMB_BOOST = 1.0
-LONG_QUERY_CLAUSE_THRESHOLD = 4   # số mệnh đề trở lên mới coi là "query dài"
 
 # ==================== GIỚI HẠN TÀI NGUYÊN MÁY DEV (KHÔNG phải quyết định kiến trúc) ====================
 # ĐÃ ĐỔI SANG FAISS+MEILISEARCH (thay Milvus+Elasticsearch) — xem
@@ -185,19 +153,24 @@ ENABLED_BRANCHES = {
 # ==================== LỌC VIDEO TRƯỚC (mục 3) ====================
 # BTC KHÔNG cung cấp trường "thể loại" (category) tường minh trong metadata —
 # đã kiểm tra thật 873/873 file media-info: chỉ có author/title/description/
-# keywords/publish_date, KHÔNG có category_id/categories. NHƯNG toàn bộ dữ liệu
-# chỉ có ĐÚNG 7 kênh YouTube, mỗi kênh nội dung RẤT nhất quán (đã xem mẫu title
-# từng kênh) -> dùng "author" làm proxy thể loại đáng tin cậy, gộp về nhóm lớn.
-VIDEO_CATEGORY_MAP = {
-    "60 Giây Official": "Tin tức",
-    "Báo Thanh Niên": "Tin tức",
-    "Báo Tuổi Trẻ": "Tin tức",
-    "HTV Sports": "Thể thao",
-    "ViVU TV": "Nấu ăn",
-    "HTV Giải Trí": "Giải trí",
-    "HTV Entertainment": "Giải trí",
+# keywords/publish_date, KHÔNG có category_id/categories. Ban đầu thử suy từ
+# "author" (kênh YouTube, chỉ 7 kênh) nhưng KHÔNG đủ chi tiết (vd 1 kênh có thể
+# gộp nhiều nội dung khác nhau theo shard). THAY BẰNG bảng do người dùng TỰ XEM
+# THẬT nội dung từng shard rồi xác nhận — chính xác hơn nhiều, dùng trực tiếp
+# tiền tố video ("L21_V001" -> shard "L21") làm khoá tra, không qua metadata nữa.
+SHARD_CATEGORY_MAP = {
+    "L21": "Thời sự 60 giây",
+    "L22": "Thời sự 60 giây",
+    "L23": "Đua xe đạp",
+    "L24": "Múa lân",
+    "L25": "Dạy học",
+    "L26": "Nấu ăn",
+    "L27": "Du lịch trải nghiệm",
+    "L28": "Chương trình Tản mạn Mê Kông",
+    "L29": "Chương trình Đôi mắt Mê Kông",
+    "L30": "Cuộc thi lan tỏa năng lượng tích cực năm 2024",
 }
-VIDEO_CATEGORIES = sorted(set(VIDEO_CATEGORY_MAP.values()))   # ["Giải trí","Nấu ăn","Thể thao","Tin tức"]
+VIDEO_CATEGORIES = sorted(set(SHARD_CATEGORY_MAP.values()))
 
 # ==================== STRICT OCR/ASR FILTER (mục 4) ====================
 # Khi OCR/ASR khớp với điểm >= ngưỡng này, coi là "CHẮC CHẮN" -> thay vì chỉ

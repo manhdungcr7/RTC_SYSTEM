@@ -1,9 +1,9 @@
 """
 Build index Meilisearch `aic_videos` — LỌC VIDEO TRƯỚC (mục 3, tính năng "RAG
 lọc video"). Gộp theo TỪNG VIDEO: toàn bộ transcript ASR + toàn bộ caption của
-mọi keyframe + tiêu đề/kênh (metadata BTC) thành 1 document text lớn, cộng
-`category` suy từ kênh YouTube (core.config.VIDEO_CATEGORY_MAP — BTC KHÔNG cung
-cấp trường category tường minh, đã kiểm tra thật 873/873 file metadata).
+mọi keyframe + tiêu đề (metadata BTC) thành 1 document text lớn, cộng `category`
+tra theo TIỀN TỐ SHARD (core.config.SHARD_CATEGORY_MAP — người dùng tự xem thật
+nội dung từng shard L21-L30 rồi xác nhận, CHÍNH XÁC hơn suy từ kênh YouTube).
 
 Đây là bản KEYWORD (Meilisearch full-text, chạy được NGAY, không cần Kaggle).
 Bản NGỮ NGHĨA thật (embedding, RAG đúng nghĩa) là bước NÂNG CẤP TÙY CHỌN — xem
@@ -26,7 +26,7 @@ import meilisearch
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from core.config import VIDEO_CATEGORY_MAP  # noqa: E402
+from core.config import SHARD_CATEGORY_MAP  # noqa: E402
 
 ARTIFACTS = Path(__file__).resolve().parents[1] / "artifacts"
 MEILI_URL = "http://localhost:7700"
@@ -92,7 +92,7 @@ def wait_task(client, task_info):
 
 
 def main():
-    print("=" * 60, "\n[1/4] Đọc metadata BTC (author/title -> category)\n", "=" * 60)
+    print("=" * 60, "\n[1/4] Đọc metadata BTC (title)\n", "=" * 60)
     media_info = load_media_info()
 
     print("=" * 60, "\n[2/4] Gộp ASR theo video\n", "=" * 60)
@@ -108,15 +108,25 @@ def main():
     for video in sorted(all_videos):
         meta = media_info.get(video, {})
         author = meta.get("author", "")
-        category = VIDEO_CATEGORY_MAP.get(author)
+        shard = video.split("_")[0]
+        category = SHARD_CATEGORY_MAP.get(shard)
         if category is None:
             category = "Khác"
             n_no_category += 1
         title = meta.get("title", "")
-        text = " ".join([title, asr_text.get(video, ""), cap_text.get(video, "")]).strip()
+        asr_t = asr_text.get(video, "")
+        cap_t = cap_text.get(video, "")
+        # TÁCH RIÊNG asr_text / caption_text (trước đây gộp hết vào 1 trường `text`
+        # nên không thể lọc riêng "theo lời thoại" hay "theo hình ảnh"). Vẫn GIỮ
+        # `text` gộp làm mặc định vì tìm cả hai nguồn thường tốt hơn tìm một nguồn
+        # — chỉ-ASR / chỉ-caption là lựa chọn CHỦ ĐỘNG của người dùng khi họ biết
+        # manh mối nằm ở đâu.
         docs.append({"video": video, "author": author, "category": category,
-                      "title": title, "text": text})
-    print(f"  --> {len(docs):,} video document ({n_no_category} không xác định được kênh -> 'Khác')")
+                      "title": title,
+                      "text": " ".join([title, asr_t, cap_t]).strip(),
+                      "asr_text": asr_t,
+                      "caption_text": cap_t})
+    print(f"  --> {len(docs):,} video document ({n_no_category} không xác định được shard -> 'Khác')")
 
     client = meilisearch.Client(MEILI_URL, MEILI_KEY or None)
     print("Meilisearch health:", client.health())
@@ -127,7 +137,8 @@ def main():
     wait_task(client, client.create_index("aic_videos", {"primaryKey": "video"}))
     idx = client.index("aic_videos")
     wait_task(client, idx.update_filterable_attributes(["category", "author"]))
-    wait_task(client, idx.update_searchable_attributes(["title", "text"]))
+    wait_task(client, idx.update_searchable_attributes(
+        ["title", "text", "asr_text", "caption_text"]))
 
     BATCH = 200
     for bi in range(0, len(docs), BATCH):

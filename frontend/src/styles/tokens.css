@@ -1,0 +1,119 @@
+@import "tailwindcss";
+
+/* ============================================================================
+   HỆ TOKEN — AIC Retrieval
+   Ẩn dụ thiết kế: BÀN TRỘN TÍN HIỆU (mixing console), không phải bảng tin ảnh.
+   Mỗi nhánh tín hiệu có MỘT màu định danh, và màu đó đi theo nhánh xuyên suốt:
+   fader ở rail trái -> thanh đóng góp trên mỗi ô kết quả -> bảng "Vì sao" ->
+   cột trong tab so nhánh. Liếc một ô kết quả là biết nó thắng nhờ nhánh nào.
+
+   QUY TẮC MÀU BẤT DI BẤT DỊCH: màu nhánh CHỈ dùng để biểu thị nhánh. Không
+   dùng cho nút bấm, không dùng trang trí. Thấy vàng chanh = đang nói về DINOv3.
+
+   Nền tối là quyết định CHỨC NĂNG chứ không phải thẩm mỹ: đây là công cụ soi
+   ảnh/video, nền sáng làm lệch cảm nhận độ sáng và màu của khung hình (đúng lý
+   do phòng dựng phim luôn tối). Graphite ngả xanh lạnh để không "hút" màu ấm
+   của khung hình.
+   ============================================================================ */
+
+@theme {
+  /* ---- Nền và bề mặt ---- */
+  --color-bg:        #0F1216;
+  --color-panel:     #171B21;
+  --color-panel-2:   #1E242C;
+  --color-panel-3:   #262E38;
+  --color-line:      #2A323C;
+  --color-line-hi:   #3A4653;
+
+  /* ---- Chữ ---- */
+  --color-fg:        #E6EAF0;
+  --color-fg-dim:    #8C97A6;
+  --color-fg-mute:   #5C6673;
+
+  /* ---- Trạng thái hệ thống ---- */
+  --color-focus:     #6EA8FE;
+  --color-pin:       #FFB020;
+  --color-ok:        #3DD68C;
+  --color-warn:      #F5A524;
+  --color-err:       #F2555A;
+
+  /* ---- MÀU ĐỊNH DANH NHÁNH TÍN HIỆU ---- */
+  --color-sig-metaclip2: #5BC0EB;
+  --color-sig-pecore:    #9BC53D;
+  --color-sig-beit3:     #B79CED;
+  --color-sig-dinov3:    #FDE74C;
+  --color-sig-capemb:    #F2A65A;
+  --color-sig-asr_emb:   #E4572E;
+  --color-sig-ocr:       #DCE3EC;
+  --color-sig-asr:       #EF6F6C;
+  --color-sig-object:    #45C4B0;
+
+  /* ---- Chữ ----
+     IBM Plex không tải được (CSP chặn CDN, và nhúng data-URI cho 3 face là quá
+     nặng) -> dùng ngăn xếp hệ thống. Điều BẮT BUỘC giữ là MONO cho MỌI con số:
+     chữ số đẳng chiều (tabular) — khi tua video, frame_idx nhảy liên tục, font
+     tỉ lệ làm cụm số "rung" và mắt không đọc kịp. Đây là yêu cầu chức năng. */
+  --font-ui:   ui-sans-serif, "Segoe UI", Roboto, system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+
+  --radius-sm: 3px;
+  --radius-md: 5px;
+}
+
+/* Chữ số LUÔN đẳng chiều ở mọi nơi dùng mono */
+.font-mono, .tabular {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;            /* bố cục 3 cột tự cuộn từng cột, trang không cuộn */
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+/* Tiêu điểm bàn phím phải LUÔN nhìn thấy — đây là công cụ dùng nhiều phím tắt */
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+
+/* Thanh cuộn mảnh, hợp giao diện dày đặc */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--color-line);
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--color-line-hi); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---- Lớp tiện ích dùng lại nhiều ---- */
+@utility panel-surface {
+  background: var(--color-panel);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+}
+
+@utility label-xs {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-fg-dim);
+  font-weight: 600;
+}

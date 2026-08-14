@@ -1,62 +1,174 @@
+"""Hợp đồng POST /search.
+
+NGUYÊN TẮC TƯƠNG THÍCH: các trường "phẳng" cũ (ocr_query, asr_query, weights,
+video_scope...) VẪN hoạt động y như trước — frontend cũ không gãy. Các trường
+CÓ CẤU TRÚC mới (ocr, asr, signals, clauses, negative, feedback...) là đường
+dành cho giao diện mới; khi có mặt thì chúng THẮNG trường phẳng tương ứng.
+Xem api/routers/search.py::_resolve_* để biết thứ tự ưu tiên chính xác.
+"""
 from typing import Literal
 
 from pydantic import BaseModel
 
 
+# ==================== CÁC KHỐI CÓ CẤU TRÚC (giao diện mới) ====================
+
+class SignalConfig(BaseModel):
+    """1 kênh trên "bàn trộn tín hiệu". `enabled=False` BỎ HẲN nhánh khỏi tính
+    toán (nhanh hơn); weight=0 vẫn chạy nhưng không góp điểm (để so sánh)."""
+    enabled: bool = True
+    weight: float | None = None      # None = dùng mặc định theo `kind`
+
+
+class ClauseConfig(BaseModel):
+    """Mệnh đề thị giác do NGƯỜI DÙNG xác nhận/sửa (P4: LLM chỉ đề xuất)."""
+    text: str
+    weight: float = 1.0
+    enabled: bool = True
+
+
+class ClauseFusion(BaseModel):
+    mode: Literal["max_alpha_mean"] = "max_alpha_mean"
+    alpha: float = 0.3
+
+
+class OcrConfig(BaseModel):
+    """`mode="filter"` = LỌC CỨNG (các nhánh khác chỉ tìm trong tập đã khớp);
+    `mode="score"` = chỉ cộng điểm vào RRF.
+
+    CHỈ 1 CƠ CHẾ KHỚP DUY NHẤT (đã bỏ lựa chọn contains/phrase/prefix + thanh
+    "dung sai lỗi chính tả" trước đây — ĐÃ ĐO: người dùng không phân biệt được ý
+    nghĩa các lựa chọn đó, và thanh dung sai KHÔNG THẬT SỰ chỉnh được gì — dung
+    sai lỗi chính tả của Meilisearch là cài đặt CẤP INDEX, không chỉnh được theo
+    từng truy vấn). Cơ chế cố định: yêu cầu khớp ĐỦ mọi từ đã gõ (thứ tự tự do),
+    mỗi từ vẫn hưởng dung sai lỗi chính tả mặc định của index — đúng nhu cầu
+    thật: người dùng chỉ gõ vài từ NHỚ ĐƯỢC, không cần biết hết chữ trong ảnh."""
+    query: str = ""
+    mode: Literal["score", "filter"] = "score"
+
+
+class AsrConfig(BaseModel):
+    """`window_before/after` BẤT ĐỐI XỨNG có chủ đích — lời dẫn thường đi TRƯỚC
+    hình minh hoạ trong tin tức, nên cửa sổ "sau" cần rộng hơn."""
+    query: str = ""
+    lexical: bool = True             # khớp TỪ (Meilisearch)
+    semantic: bool = True            # khớp Ý NGHĨA (nhánh FAISS asr_emb)
+    mode: Literal["score", "filter"] = "score"
+    window_before: float = 3.0
+    window_after: float = 5.0
+
+
+class ObjectCond(BaseModel):
+    """1 điều kiện vật thể — token đã index dạng "cls color" (YOLO26x).
+
+    ĐÃ BỎ "vị trí trên lưới 3x3" (từng có, xem lịch sử) — ĐO THỰC TẾ: ít tác
+    dụng phân biệt (YOLO26x không định vị đủ chính xác để người dùng tin cậy
+    chọn đúng ô) mà làm giao diện rườm rà thêm 1 bước không cần thiết."""
+    cls: str
+    color: str | None = None
+    min_count: int = 1
+
+
+class NegativeConfig(BaseModel):
+    """Mệnh đề LOẠI TRỪ — đẩy nhóm kết quả sai xuống. Đòn bẩy mạnh cho câu mơ hồ
+    (mô tả thêm cái mình muốn thường kém hiệu quả hơn đẩy cái mình KHÔNG muốn)."""
+    text: str = ""
+    weight: float = 0.45
+    hard_threshold: float | None = None   # có -> LOẠI HẲN khung vượt ngưỡng tương đồng
+
+
+class FrameRef(BaseModel):
+    video: str
+    n: int
+
+
+class FeedbackConfig(BaseModel):
+    """Phản hồi liên quan (Rocchio) — chạy hoàn toàn trong RAM trên FAISS, KHÔNG
+    cần gọi GPU: q' = q + beta*mean(vector ✓) - gamma*mean(vector ✗)."""
+    positive: list[FrameRef] = []
+    negative: list[FrameRef] = []
+    beta: float = 0.6
+    gamma: float = 0.3
+
+
+class VideoScopeConfig(BaseModel):
+    video_ids: list[str] = []
+    invert: bool = False             # True = LOẠI TRỪ các video này
+
+
+class FusionConfig(BaseModel):
+    method: Literal["rrf", "weighted_sum"] = "rrf"
+    k: int = 60
+
+
+# ==================== REQUEST ====================
+
 class SearchRequest(BaseModel):
-    query: str
+    query: str = ""
     kind: Literal["kis", "qa", "trake"] = "kis"
     topk: int = 100
-    use_expansion: bool = True   # LLM query-expansion cho nhánh metaclip2 (nếu có key)
+    use_expansion: bool = True   # LLM tách mệnh đề (chỉ ĐỀ XUẤT, người dùng sửa được)
 
-    # Ghi đè TAY — người vận hành biết chính xác cần tìm chữ/lời gì thì tự nhập,
-    # bỏ qua bước tự động (LLM trích từ khoá / regex cue) vốn có thể đoán sai hoặc
-    # bị pha loãng bởi câu dài (xem core.query_service.extract_ocr_keywords). Để
-    # trống (None) -> hành vi tự động như cũ, không đổi gì.
+    # ---- Đường CŨ (phẳng) — giữ nguyên để frontend cũ không gãy ----
     ocr_query: str | None = None
     asr_query: str | None = None
-    object_query: str | None = None   # có giá trị -> LUÔN bật nhánh object+màu (bỏ qua regex gate)
-
-    # Chọn tay nhánh MODEL EMBEDDING nào tham gia (metaclip2/beit3/pecore/capemb/
-    # asr_emb/dinov3) — None = hành vi mặc định cũ (bật theo ENABLED_BRANCHES +
-    # trọng số > 0, xem api/routers/search.py). UI mặc định chỉ tích metaclip2
-    # (nhánh CHÍNH, bắt buộc) — các nhánh khác NẶNG hơn (gọi thêm model từ xa) nên
-    # để người dùng tự bật khi cần, không ép chạy hết mỗi lần tìm.
+    object_query: str | None = None
     models: list[str] | None = None
-
-    # TRỌNG SỐ ĐỘNG — người dùng tự ghi đè trọng số fusion CHO REQUEST NÀY (không
-    # đổi giá trị mặc định trong core/config.py, chỉ override tại chỗ). Key = tên
-    # tín hiệu ("metaclip2","pecore","beit3","capemb","dinov3","asr_emb",
-    # "ocr","ocr_keyword","asr","object","entity"). Thiếu key nào -> dùng mặc định
-    # đã đo (theo `kind`) như cũ. None/rỗng = hành vi cũ hoàn toàn.
     weights: dict[str, float] | None = None
-
-    # TÍCH HỢP DINOv3 (mục "tìm theo ảnh" giờ tham gia CHUNG vào /search thay vì
-    # tách riêng /similar) — cho query 1 ẢNH THAM CHIẾU, CHỌN 1 TRONG 2 NGUỒN:
-    #   - ref_video/ref_n: 1 keyframe ĐÃ CÓ SẴN trong index (lấy lại vector, không
-    #     cần encode lại — xem FaissRepo.fetch_vector_by_id).
-    #   - ref_image_b64: ảnh UPLOAD ngoài (data URI hoặc base64 thuần), encode qua
-    #     REMOTE DINOv3 (core.query_encoders.RemoteImageEncoder). CẦN REMOTE
-    #     encoder đang chạy — không có sẽ bỏ qua êm tín hiệu này (không lỗi).
-    # Có 1 trong 2 -> thêm tín hiệu "dinov3" vào RRF chung, trọng số theo
-    # DINOV3_WEIGHT (hoặc weights["dinov3"] nếu ghi đè).
     ref_video: str | None = None
     ref_n: int | None = None
     ref_image_b64: str | None = None
-
-    # LỌC VIDEO TRƯỚC (mục 3) — danh sách video giới hạn phạm vi tìm (lấy từ
-    # POST /search/videos, xem api/routers/videos.py). None/rỗng = tìm toàn kho
-    # như cũ. Áp dụng CHO MỌI nhánh (thị giác qua FaissRepo.search_within_ids,
-    # OCR/ASR/object qua Meilisearch filter video IN [...]).
     video_scope: list[str] | None = None
-
-    # STRICT OCR/ASR FILTER (mục 4) — khi True VÀ có khớp OCR/ASR độ tin cậy cao
-    # (>= core.config.OCR_FILTER_CONFIDENCE/ASR_FILTER_CONFIDENCE), giới hạn HẲN
-    # các nhánh thị giác chỉ search trong tập khung hình đã khớp (± sai số, xem
-    # OCR_FILTER_MARGIN_FRAMES/ASR_FILTER_MARGIN_S) thay vì chỉ CỘNG trọng số vào
-    # RRF như bình thường. Không khớp đủ tin cậy -> tự động rơi về fusion mềm như
-    # cũ (không lỗi, không rỗng kết quả). Mặc định False (giữ hành vi cũ).
     strict_text_filter: bool = False
+
+    # ---- Đường MỚI (có cấu trúc) — thắng đường cũ khi có mặt ----
+    signals: dict[str, SignalConfig] | None = None
+    clauses: list[ClauseConfig] | None = None        # None = để LLM tách như cũ
+    clause_fusion: ClauseFusion | None = None
+    translations: dict[int, str] | None = None       # ghi đè bản dịch theo chỉ số mệnh đề
+    ocr: OcrConfig | None = None
+    asr: AsrConfig | None = None
+    objects: list[ObjectCond] | None = None
+    negative: NegativeConfig | None = None
+    feedback: FeedbackConfig | None = None
+    scope: VideoScopeConfig | None = None
+    fusion: FusionConfig | None = None
+    per_video_cap: int | None = None                 # None = C.DEDUP_DEFAULT
+    dedup_seconds: float | None = None               # gộp khung quá gần nhau về thời gian
+
+    # ---- Minh bạch hoá (P1-P3) ----
+    explain: bool = False            # trả kèm phân rã điểm từng nhánh/mệnh đề
+    branch_lists: bool = False       # trả kèm bảng xếp hạng RIÊNG từng nhánh (tab nhánh)
+
+
+# ==================== RESPONSE ====================
+
+class BranchContribution(BaseModel):
+    branch: str
+    rank: int                  # thứ hạng trong nhánh đó (1-based); -1 = không có mặt
+    raw: float                 # điểm thô của nhánh (cosine / _rankingScore)
+    weight: float
+    rrf: float                 # phần đóng góp THẬT vào điểm gộp cuối
+
+
+class ClauseScore(BaseModel):
+    text: str
+    score: float
+
+
+class FrameContent(BaseModel):
+    """Nội dung đã trích sẵn của khung hình — để người dùng đối chiếu ngay mà
+    không phải mở video (đặc biệt quan trọng cho Q&A đọc chữ nhỏ)."""
+    caption: str | None = None
+    ocr: str | None = None
+    objects: str | None = None       # "person 3a red car 5c blue" — xem meili_repo
+    asr_window: list[dict] = []      # [{"t": 38.1, "text": "..."}]
+
+
+class HitExplain(BaseModel):
+    branches: list[BranchContribution] = []
+    clauses: list[ClauseScore] = []
+    penalties: dict[str, float] = {}
 
 
 class SearchHit(BaseModel):
@@ -66,17 +178,26 @@ class SearchHit(BaseModel):
     frame_idx: int
     score: float
     thumb_url: str
-    pts_time: float | None = None   # giây trong video gốc — None nếu maps CSV thiếu (hiếm)
+    pts_time: float | None = None
+    rank: int = 0
+    # Chỉ có khi req.explain=True — giữ None để response nhẹ khi không cần.
+    explain: HitExplain | None = None
+    content: FrameContent | None = None
 
 
 class SignalInfo(BaseModel):
-    """1 dòng minh bạch hoá: nguồn tín hiệu nào đã THẬT SỰ tham gia RRF, trọng số
-    bao nhiêu, và câu/từ khoá cụ thể đã dùng — để người vận hành hiểu vì sao ra
-    kết quả đó và biết chỗ nào cần tự ghi đè tay."""
+    """1 dòng minh bạch: nhánh nào ĐÃ THẬT SỰ tham gia, trọng số bao nhiêu, dùng
+    câu/từ khoá gì, ra bao nhiêu kết quả."""
     name: str
     weight: float
     query_text: str | None = None
     n_hits: int = 0
+
+
+class BranchRanking(BaseModel):
+    """Bảng xếp hạng RIÊNG của 1 nhánh (chưa gộp) — cho tab xem theo nhánh."""
+    branch: str
+    hits: list[SearchHit] = []
 
 
 class SearchResponse(BaseModel):
@@ -85,8 +206,10 @@ class SearchResponse(BaseModel):
     clauses_en: list[str]
     ocr_keywords: list[str] = []
     signals_used: list[SignalInfo] = []
-    # Mục 4 — minh bạch hoá: có thật sự kích hoạt strict filter không (có thể
-    # False dù req.strict_text_filter=True, nếu không tìm được khớp đủ tin cậy),
-    # và tập ứng viên còn lại sau khi lọc rộng bao nhiêu id.
     strict_filter_applied: bool = False
     strict_filter_pool_size: int | None = None
+    # Minh bạch hoá thêm
+    total_candidates: int = 0
+    took_ms: int = 0
+    branch_rankings: list[BranchRanking] = []
+    cache_stats: dict | None = None

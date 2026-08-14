@@ -24,6 +24,7 @@ class MediaIndex:
         self._maps_csv: dict[str, Path] = {}
         self._mp4: dict[str, Path] = {}
         self._pts_cache: dict[str, dict[int, float]] = {}
+        self._full_map_cache: dict[str, list[dict]] = {}
 
     def build(self) -> "MediaIndex":
         for d in glob.glob(str(settings.DATA_ROOT / settings.KEYFRAME_GLOB), recursive=True):
@@ -50,19 +51,59 @@ class MediaIndex:
         p = d / f"{n:06d}.webp"
         return p if p.exists() else None
 
+    def resolve_thumb_path(self, video: str, n: int) -> Path | None:
+        """Ban 320px tien sinh (xem indexing/build_thumbnails.py) — luoi ket qua
+        dung ban nay thay vi anh goc de tai nhanh (xem SYSTEM_DESIGN thap thumbnail).
+        Fallback ve anh goc neu chua tien sinh (vd chay lan dau chua build)."""
+        p = settings.DATA_ROOT / "thumbs_320" / video / f"{n:06d}.webp"
+        if p.exists():
+            return p
+        return self.resolve_frame_path(video, n)
+
     def resolve_video_path(self, video: str) -> Path | None:
         return self._mp4.get(video)
+
+    def _load_full_map(self, video: str) -> list[dict]:
+        """Bảng map ĐẦY ĐỦ của 1 video: [{n, frame_idx, pts_time, fps}] sort theo n.
+        Đây là NGUỒN CHÂN LÝ để quy đổi giây <-> frame_idx (đồng hồ frame_idx ở
+        khung xem chi tiết). Đọc bằng TÊN CỘT (csv.DictReader) chứ không theo vị
+        trí — thứ tự cột của bộ dữ liệu này KHÁC hệ cũ."""
+        cached = self._full_map_cache.get(video)
+        if cached is not None:
+            return cached
+        csv_path = self._maps_csv.get(video)
+        rows: list[dict] = []
+        if csv_path is not None:
+            with open(csv_path, newline="", encoding="utf-8") as f:
+                for row in csv.DictReader(f):
+                    try:
+                        rows.append({
+                            "n": int(row["n"]),
+                            "frame_idx": int(row["frame_idx"]),
+                            "pts_time": float(row["pts_time"]),
+                            "fps": float(row.get("fps") or 0.0),
+                        })
+                    except (ValueError, KeyError):
+                        continue
+        rows.sort(key=lambda r: r["n"])
+        self._full_map_cache[video] = rows
+        return rows
+
+    def full_map(self, video: str) -> list[dict]:
+        return self._load_full_map(video)
+
+    def fps(self, video: str) -> float:
+        rows = self._load_full_map(video)
+        for r in rows:
+            if r["fps"] > 0:
+                return r["fps"]
+        return 25.0     # mặc định an toàn nếu maps CSV thiếu cột fps
 
     def _load_pts_map(self, video: str) -> dict[int, float]:
         cached = self._pts_cache.get(video)
         if cached is not None:
             return cached
-        csv_path = self._maps_csv.get(video)
-        out: dict[int, float] = {}
-        if csv_path is not None:
-            with open(csv_path, newline="", encoding="utf-8") as f:
-                for row in csv.DictReader(f):
-                    out[int(row["n"])] = float(row["pts_time"])
+        out = {r["n"]: r["pts_time"] for r in self._load_full_map(video)}
         self._pts_cache[video] = out
         return out
 
