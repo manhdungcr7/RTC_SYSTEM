@@ -1,10 +1,10 @@
 /** Ảnh tham chiếu (kèm cắt vùng) + thu hẹp phạm vi video. */
 import { useMutation } from "@tanstack/react-query";
-import { Crop, ImageUp, Search, X } from "lucide-react";
+import { Crop, ImageUp, Plus, Search, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { api } from "../../api/client";
-import { Button, Modal, Select, TextInput, cx } from "../../components/ui";
+import { Button, Label, Modal, Select, TextArea, TextInput, cx } from "../../components/ui";
 import { useSession } from "../../stores/sessionStore";
 
 /* ------------------------------ Ảnh tham chiếu ------------------------------ */
@@ -172,6 +172,16 @@ export function VideoScopePanel({ value, onChange }: {
   const [field, setField] = useState<"all" | "asr" | "caption">("all");
   const [cats, setCats] = useState<string[]>([]);
   const [picked, setPicked] = useState<Set<string>>(new Set(value.videos));
+  const [manualInput, setManualInput] = useState("");
+
+  const addManual = () => {
+    const parsed = manualInput.split(/[\s,;]+/).map((v) => v.trim()).filter(Boolean);
+    if (parsed.length === 0) return;
+    const merged = Array.from(new Set([...value.videos, ...parsed]));
+    onChange({ ...value, videos: merged });
+    setPicked(new Set(merged));
+    setManualInput("");
+  };
 
   const search = useMutation({
     mutationFn: () => api.searchVideos(q, cat || null, 100, field),
@@ -204,6 +214,25 @@ export function VideoScopePanel({ value, onChange }: {
           </Button>
         </div>
       )}
+
+      <div className="flex flex-col gap-1 rounded-[var(--radius-sm)] border border-dashed border-[var(--color-line)] p-2">
+        <Label className="mb-0">Dán danh sách video cụ thể</Label>
+        <p className="text-[10px] leading-snug text-[var(--color-fg-mute)]">
+          Đã tìm ra vài video nghi ngờ chứa đáp án? Dán tên video vào đây để lần
+          tìm sau CHỈ tra trong đúng những video này — cách nhau bằng dấu phẩy,
+          khoảng trắng hoặc xuống dòng, không cần qua bước tìm-rồi-tick bên dưới.
+        </p>
+        <TextArea value={manualInput} onChange={(e) => setManualInput(e.target.value)}
+                  placeholder={"L21_V001, L22_V045\nL23_V012"}
+                  rows={2} className="text-[11px] font-mono" />
+        <Button size="sm" onClick={addManual} disabled={!manualInput.trim()}>
+          <Plus size={11} /> Thêm vào phạm vi
+        </Button>
+      </div>
+
+      <div className="my-0.5 flex items-center gap-2 text-[10px] text-[var(--color-fg-mute)]">
+        <div className="h-px flex-1 bg-[var(--color-line)]" /> hoặc tìm theo nội dung <div className="h-px flex-1 bg-[var(--color-line)]" />
+      </div>
 
       <TextInput value={q} onChange={(e) => setQ(e.target.value)}
                  onKeyDown={(e) => e.key === "Enter" && search.mutate()}
