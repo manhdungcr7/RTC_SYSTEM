@@ -38,7 +38,7 @@ from core import config as C
 from core import query_service, translate
 from core.asr_align import align_segments_to_frames
 from core.fusion import (Hit, dedup_by_time, dedup_by_video, fuse_with_explain,
-                          maxmean_clauses_detailed)
+                          maxmean_clauses_detailed, rocchio)
 from core.media_index import MediaIndex
 from core.query_cache import BranchResultCache, QueryVectorCache, scope_signature, vector_hash
 from core.query_encoders import QueryEncoders
@@ -127,37 +127,6 @@ def _align_scored(segments, media_index, window_before: float, window_after: flo
                 if score > best.get(doc_id, -1.0):
                     best[doc_id] = score
     return sorted(best.items(), key=lambda kv: -kv[1])
-
-
-def _rocchio(base_vec: np.ndarray, branch: str, faiss: FaissRepo,
-              positive, negative, beta: float, gamma: float) -> np.ndarray:
-    """Dịch chuyển vector truy vấn theo phản hồi ✓/✗ của người dùng:
-        q' = q + beta*mean(vector các khung ✓) - gamma*mean(vector các khung ✗)
-    Chạy HOÀN TOÀN trong RAM trên FAISS (index.reconstruct), KHÔNG gọi GPU — nên
-    thao tác này tức thì. Đây là lợi thế trực tiếp của kiến trúc IndexFlatIP:
-    vector gốc luôn lấy lại được, không như index nén/ANN.
-
-    Con người rất giỏi nhận ra "cái này gần đúng, cái kia sai" dù không diễn đạt
-    được bằng lời — Rocchio biến khả năng đó thành tín hiệu tìm kiếm."""
-    if not faiss.has_branch(branch):
-        return base_vec
-    def _mean(refs):
-        vecs = []
-        for r in refs:
-            v = faiss.fetch_vector_by_id(branch, f"{r.video}:{r.n:06d}")
-            if v is not None:
-                vecs.append(v)
-        return np.mean(np.stack(vecs), axis=0) if vecs else None
-
-    q = np.asarray(base_vec, dtype=np.float32).copy()
-    pos = _mean(positive) if positive else None
-    neg = _mean(negative) if negative else None
-    if pos is not None:
-        q = q + beta * pos
-    if neg is not None:
-        q = q - gamma * neg
-    n = np.linalg.norm(q)
-    return (q / n).astype(np.float32) if n > 1e-8 else np.asarray(base_vec, dtype=np.float32)
 
 
 @router.post("/search", response_model=SearchResponse)
@@ -329,7 +298,7 @@ def search(req: SearchRequest,
     if "metaclip2" in encoded:
         mc_vecs = encoded["metaclip2"]
         if fb and (fb.positive or fb.negative):
-            mc_vecs = np.stack([_rocchio(v, "metaclip2", faiss, fb.positive, fb.negative,
+            mc_vecs = np.stack([rocchio(v, "metaclip2", faiss, fb.positive, fb.negative,
                                           fb.beta, fb.gamma) for v in mc_vecs])
         mc_scored, per_clause_scores = maxmean_clauses_detailed(
             mc_vecs, faiss, "metaclip2", allowed_ids=allowed_ids("metaclip2"),
@@ -342,7 +311,7 @@ def search(req: SearchRequest,
     if "pecore" in encoded:
         pc_vecs = encoded["pecore"]
         if fb and (fb.positive or fb.negative):
-            pc_vecs = np.stack([_rocchio(v, "pecore", faiss, fb.positive, fb.negative,
+            pc_vecs = np.stack([rocchio(v, "pecore", faiss, fb.positive, fb.negative,
                                           fb.beta, fb.gamma) for v in pc_vecs])
         pc_scored, _ = maxmean_clauses_detailed(
             pc_vecs, faiss, "pecore", allowed_ids=allowed_ids("pecore"), alpha=alpha)
@@ -353,7 +322,7 @@ def search(req: SearchRequest,
     # ---- beit3 (ensemble, đã max-pool phía server) ----
     if b3_vec is not None:
         if fb and (fb.positive or fb.negative):
-            b3_vec = _rocchio(b3_vec, "beit3", faiss, fb.positive, fb.negative,
+            b3_vec = rocchio(b3_vec, "beit3", faiss, fb.positive, fb.negative,
                                fb.beta, fb.gamma)
         add_signal("beit3", "BEiT-3", vector_search("beit3", b3_vec),
                     _branch_weight(req, "beit3", C.BEIT3_WEIGHT.get(kind, 0.2)),
@@ -365,7 +334,7 @@ def search(req: SearchRequest,
         w_cap = _branch_weight(req, "capemb", C.CAPTION_WEIGHT.get(kind, 0.5))
         v = cap_vec
         if fb and (fb.positive or fb.negative):
-            v = _rocchio(v, "capemb", faiss, fb.positive, fb.negative, fb.beta, fb.gamma)
+            v = rocchio(v, "capemb", faiss, fb.positive, fb.negative, fb.beta, fb.gamma)
         add_signal("capemb", "Caption (Qwen3)", vector_search("capemb", v), w_cap, query_vi)
 
     # ---- asr_emb (khớp Ý NGHĨA lời thoại) ----

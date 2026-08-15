@@ -20,6 +20,41 @@ class Hit:
     score: float
 
 
+def rocchio(base_vec: np.ndarray, branch: str, faiss: FaissRepo,
+            positive, negative, beta: float, gamma: float) -> np.ndarray:
+    """Dịch chuyển vector truy vấn theo phản hồi ✓/✗ của người dùng:
+        q' = q + beta*mean(vector các khung ✓) - gamma*mean(vector các khung ✗)
+    Chạy HOÀN TOÀN trong RAM trên FAISS (index.reconstruct), KHÔNG gọi GPU — nên
+    thao tác này tức thì. Đây là lợi thế trực tiếp của kiến trúc IndexFlatIP:
+    vector gốc luôn lấy lại được, không như index nén/ANN.
+
+    Con người rất giỏi nhận ra "cái này gần đúng, cái kia sai" dù không diễn đạt
+    được bằng lời — Rocchio biến khả năng đó thành tín hiệu tìm kiếm. Dùng chung
+    cho cả /search VÀ /temporal (mỗi sự kiện TRAKE tự dịch vector riêng của nó
+    theo phản hồi CỦA ĐÚNG sự kiện đó) — CHỈ đổi vector đầu vào trước khi đưa vào
+    fusion/DP, không đụng thuật toán phía sau ở cả 2 nơi dùng."""
+    if not faiss.has_branch(branch):
+        return base_vec
+
+    def _mean(refs):
+        vecs = []
+        for r in refs:
+            v = faiss.fetch_vector_by_id(branch, f"{r.video}:{r.n:06d}")
+            if v is not None:
+                vecs.append(v)
+        return np.mean(np.stack(vecs), axis=0) if vecs else None
+
+    q = np.asarray(base_vec, dtype=np.float32).copy()
+    pos = _mean(positive) if positive else None
+    neg = _mean(negative) if negative else None
+    if pos is not None:
+        q = q + beta * pos
+    if neg is not None:
+        q = q - gamma * neg
+    n = np.linalg.norm(q)
+    return (q / n).astype(np.float32) if n > 1e-8 else np.asarray(base_vec, dtype=np.float32)
+
+
 def rrf(rank_lists: list[list[str]], k: int = C.RRF_K,
         weights: list[float] | None = None) -> dict[str, float]:
     """Reciprocal Rank Fusion — port NGUYÊN từ engine.py:59. Nhận thẳng rank-list id

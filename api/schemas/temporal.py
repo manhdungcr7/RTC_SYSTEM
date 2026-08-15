@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from api.schemas.search import SearchHit, SignalConfig
+from api.schemas.search import FeedbackConfig, SearchHit, SignalConfig
 
 
 class GapConstraint(BaseModel):
@@ -62,6 +62,13 @@ class TemporalRequest(BaseModel):
     # yếu mà không phải chạy lại toàn bộ.
     alternates_per_event: int = 0
 
+    # Phản hồi liên quan (Rocchio) RIÊNG từng sự kiện — key = chỉ số sự kiện
+    # (0-based, "0" = E1...). Đánh dấu ✓/✗ trên khung của sự kiện nào thì CHỈ
+    # dịch vector của đúng sự kiện đó (mỗi sự kiện tìm 1 khoảnh khắc khác nhau
+    # trong cùng video, không share ngữ nghĩa) — dùng chung core.fusion.rocchio
+    # với /search, CHỈ đổi vector đầu vào trước DP, không đụng thuật toán.
+    feedback: dict[int, FeedbackConfig] | None = None
+
 
 class TemporalEventHit(SearchHit):
     alternates: list[SearchHit] = []
@@ -75,3 +82,9 @@ class TemporalCandidate(BaseModel):
 
 class TemporalResponse(BaseModel):
     candidates: list[TemporalCandidate]
+    # Mệnh đề THỰC SỰ đã dùng để encode cho từng sự kiện (sau khi tách, nếu có)
+    # — cùng thứ tự với `events` gửi lên. Trước đây chạy hoàn toàn ngầm, không
+    # có gì để người dùng xem/kiểm tra máy đang hiểu câu thế nào (khác Search,
+    # nơi QueryPanel luôn hiện mệnh đề). event_clauses[i] == [events[i]] nghĩa
+    # là sự kiện đó không tách được thêm (đã là 1 mệnh đề, hành vi cũ).
+    event_clauses: list[list[str]] = []

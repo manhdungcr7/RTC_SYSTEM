@@ -19,7 +19,13 @@ TÁCH MỆNH ĐỀ TỪNG SỰ KIỆN (giống Search): mỗi câu event đượ
 mệnh đề thị giác trước khi encode (core.query_service.clauses_metaclip2), sự
 kiện 1 vế ngắn thì tách ra vẫn còn 1 phần tử — không đổi gì. Chỉ sự kiện dài,
 nhiều chi tiết mới thật sự đổi cách chấm điểm (max+mean qua mệnh đề thay vì
-1 vector nguyên khối) — xem core.temporal.search_temporal.
+1 vector nguyên khối) — xem core.temporal.search_temporal. Mệnh đề THỰC SỰ đã
+dùng được trả kèm trong response (`event_clauses`) để người dùng xem được máy
+đang hiểu câu thế nào — trước đây chỉ chạy ngầm, không có gì để kiểm tra.
+
+PHẢN HỒI LIÊN QUAN (Rocchio, giống Search): `req.feedback[j]` dịch vector CỦA
+ĐÚNG sự kiện j theo khung ✓/✗ người dùng đánh dấu cho sự kiện đó — xem
+core.fusion.rocchio. Chỉ đổi vector đầu vào, không đụng DP/boundary-anchor.
 """
 from __future__ import annotations
 
@@ -34,6 +40,7 @@ from core import config as C
 from core import translate
 from core.media_index import MediaIndex
 from core.query_encoders import QueryEncoders
+from core.fusion import rocchio
 from core.query_service import clauses_metaclip2, strip_temporal_framing
 from core.repositories.faiss_repo import FaissRepo
 from core.repositories.meili_repo import MeiliRepo
@@ -112,6 +119,21 @@ def temporal(req: TemporalRequest,
         k = len(clist)
         event_clause_vecs.append(np.asarray(flat_vecs[_pos:_pos + k]))
         _pos += k
+
+    # Phản hồi liên quan (Rocchio) RIÊNG từng sự kiện — đánh dấu ✓/✗ trên khung
+    # của sự kiện j chỉ dịch vector CỦA ĐÚNG sự kiện đó (mỗi sự kiện tìm 1
+    # khoảnh khắc khác nhau trong cùng video, không nên trộn phản hồi giữa các
+    # sự kiện). Áp dụng cho MỌI mệnh đề của sự kiện đó (nếu đã bị tách >1 mệnh
+    # đề) — cùng 1 độ dịch chuyển cho tất cả, đơn giản và nhất quán. CHỈ đổi
+    # vector đầu vào trước khi đưa vào search_temporal, không đụng DP.
+    if req.feedback:
+        for j, fb in req.feedback.items():
+            if j < 0 or j >= len(event_clause_vecs) or not (fb.positive or fb.negative):
+                continue
+            event_clause_vecs[j] = np.stack([
+                rocchio(v, "metaclip2", faiss, fb.positive, fb.negative, fb.beta, fb.gamma)
+                for v in event_clause_vecs[j]
+            ])
 
     # OCR/ASR mặc định dùng câu event đã cắt khung mẫu — NHƯNG người vận hành có
     # thể ghi đè tay RIÊNG từng sự kiện (req.ocr_queries[i]/asr_queries[i]) khi
@@ -206,4 +228,4 @@ def temporal(req: TemporalRequest,
         )
         for total, hits, alts in results
     ]
-    return TemporalResponse(candidates=candidates)
+    return TemporalResponse(candidates=candidates, event_clauses=event_clauses)

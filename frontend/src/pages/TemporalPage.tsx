@@ -13,7 +13,7 @@
  */
 import { useMutation } from "@tanstack/react-query";
 import {
-  Anchor, ArrowLeftRight, ChevronDown, Loader2, Lock, Plus, Search, Trash2,
+  Anchor, ArrowLeftRight, ChevronDown, Loader2, Lock, Plus, Search, ThumbsDown, ThumbsUp, Trash2, X,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -27,7 +27,7 @@ import { formatTimecode } from "../features/viewer/useFrameIndex";
 import { framesPerRow, useSubmission } from "../stores/submissionStore";
 import { useUi } from "../stores/uiStore";
 import { DEFAULT_WEIGHTS, TEMPORAL_BRANCHES } from "../types/api";
-import type { SearchHit, TemporalCandidate } from "../types/api";
+import type { FeedbackConfig, FrameRef, SearchHit, TemporalCandidate } from "../types/api";
 
 interface EventRow {
   text: string;
@@ -68,8 +68,27 @@ export function TemporalPage() {
   const [scope, setScope] = useState<VideoScopeValue>({ videos: [], invert: false });
   // Khung người dùng đã tự đổi, theo khoá "chỉ-số-ứng-viên-chỉ-số-sự-kiện".
   const [swaps, setSwaps] = useState<Record<string, SearchHit>>({});
+  // Phản hồi liên quan (✓/✗) RIÊNG từng sự kiện — key = chỉ số sự kiện. KHÔNG
+  // reset khi tìm lại (khác `swaps`) vì đây chính là thứ người dùng muốn giữ
+  // qua nhiều lượt tìm để dịch dần vector về đúng hướng.
+  const [feedback, setFeedback] = useState<Record<number, { positive: FrameRef[]; negative: FrameRef[] }>>({});
   const openDetail = useUi((s) => s.openDetail);
   const openWorkbench = useUi((s) => s.openWorkbench);
+
+  const markFeedback = (eventIdx: number, ref: FrameRef, kind: "positive" | "negative") =>
+    setFeedback((p) => {
+      const cur = p[eventIdx] ?? { positive: [], negative: [] };
+      const same = (r: FrameRef) => r.video === ref.video && r.n === ref.n;
+      const already = cur[kind].some(same);
+      const next = {
+        positive: kind === "positive" && !already ? [...cur.positive, ref] : cur.positive.filter((r) => !same(r)),
+        negative: kind === "negative" && !already ? [...cur.negative, ref] : cur.negative.filter((r) => !same(r)),
+      };
+      return { ...p, [eventIdx]: next };
+    });
+
+  const feedbackCount = Object.values(feedback)
+    .reduce((n, f) => n + f.positive.length + f.negative.length, 0);
 
   const files = useSubmission((s) => s.files);
   const activeName = useSubmission((s) => s.activeName);
@@ -99,6 +118,14 @@ export function TemporalPage() {
       const signals = Object.fromEntries(
         [...VISUAL_BRANCHES, ...TEXT_BRANCHES].map(
           (b) => [b, { enabled: weights[b].enabled, weight: weights[b].weight }]));
+      // Chỉ số sự kiện đổi khi có sự kiện rỗng bị lọc (valid.map) — remap phản
+      // hồi theo chỉ số MỚI (khớp đúng thứ tự events gửi lên backend).
+      const feedbackPayload: Record<number, FeedbackConfig> = {};
+      valid.forEach(({ i }, newIdx) => {
+        const f = feedback[i];
+        if (f && (f.positive.length || f.negative.length))
+          feedbackPayload[newIdx] = { positive: f.positive, negative: f.negative, beta: 0.6, gamma: 0.3 };
+      });
       return api.temporal({
         events: valid.map(({ e }) => e.text),
         context: context.trim() || undefined,
@@ -111,6 +138,7 @@ export function TemporalPage() {
         alternates_per_event: 5,
         signals,
         video_scope: scope.videos.length ? scope.videos : null,
+        feedback: Object.keys(feedbackPayload).length ? feedbackPayload : undefined,
       });
     },
     onSuccess: () => setSwaps({}),
@@ -118,6 +146,25 @@ export function TemporalPage() {
   });
 
   const nEvents = events.filter((e) => e.text.trim()).length;
+  // event_clauses trả về đánh số theo danh sách ĐÃ LỌC bỏ ô rỗng gửi lên backend
+  // (xem `valid` trong search.mutate ở trên) — map lại về đúng chỉ số ô đang
+  // hiển thị. Nếu bạn đổi ô nào rỗng/không-rỗng sau lần tìm gần nhất thì mapping
+  // này có thể lệch — chấp nhận được vì chỉ ảnh hưởng hiển thị tham khảo, không
+  // ảnh hưởng lần tìm tiếp theo (backend luôn tính lại đúng theo ô hiện tại).
+  const filledIdxs = events.map((e, i) => (e.text.trim() ? i : -1)).filter((i) => i >= 0);
+  const clausesFor = (i: number) => {
+    const pos = filledIdxs.indexOf(i);
+    return pos >= 0 ? search.data?.event_clauses?.[pos] : undefined;
+  };
+
+  // k = chỉ số trong c.hits (đã lọc bỏ ô rỗng, khớp thứ tự request vừa gửi) ->
+  // đổi về chỉ số Ô GỐC trên UI để feedback gắn đúng với event input tương ứng
+  // (xem `filledIdxs` — cùng phép map dùng để hiển thị mệnh đề đã tách).
+  const markFromResult = (k: number, ref: FrameRef, kind: "positive" | "negative") => {
+    const origIdx = filledIdxs[k];
+    if (origIdx == null) return;
+    markFeedback(origIdx, ref, kind);
+  };
 
   const addChain = (c: TemporalCandidate, ci: number) => {
     const f = activeName ? files[activeName] : null;
@@ -207,6 +254,18 @@ export function TemporalPage() {
                     </div>
                   </div>
                 )}
+                {/* Mệnh đề THỰC SỰ đã dùng để mã hoá sự kiện này (sau lần tìm gần
+                    nhất) — trước đây chạy hoàn toàn ngầm, không có gì để kiểm. */}
+                {(clausesFor(i)?.length ?? 0) > 1 && (
+                  <div className="ml-7 flex flex-wrap gap-1">
+                    {clausesFor(i)!.map((c, ci) => (
+                      <span key={ci}
+                            className="rounded-full border border-[var(--color-line)] px-1.5 py-0.5 text-[9.5px] text-[var(--color-fg-mute)]">
+                        {c}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -226,6 +285,20 @@ export function TemporalPage() {
             {search.isPending ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
             {search.isPending ? "Đang tìm chuỗi…" : "Tìm chuỗi sự kiện"}
           </Button>
+
+          {feedbackCount > 0 && (
+            <div className="mt-1.5 flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-panel-2)] px-2 py-1">
+              <span className="flex-1 text-[10.5px] text-[var(--color-fg-dim)]">
+                <ThumbsUp size={10} className="mr-0.5 inline text-[var(--color-ok)]" />
+                Đã đánh dấu {feedbackCount} khung — bấm "Tìm chuỗi sự kiện" để áp dụng
+              </span>
+              <button type="button" onClick={() => setFeedback({})}
+                      title="Xoá hết phản hồi"
+                      className="shrink-0 text-[var(--color-fg-mute)] hover:text-[var(--color-err)]">
+                <X size={11} />
+              </button>
+            </div>
+          )}
         </div>
 
         <Section title="Bàn trộn tín hiệu">
@@ -314,14 +387,41 @@ export function TemporalPage() {
                       const weak = h.score <= weakest + 1e-9 && c.hits.length > 1;
                       const chosen = swaps[`${i}-${k}`] ?? h;
                       const alts = h.alternates ?? [];
+                      const origIdx = filledIdxs[k];
+                      const fb = origIdx != null ? feedback[origIdx] : undefined;
+                      const isPos = fb?.positive.some((r) => r.video === chosen.video && r.n === chosen.n);
+                      const isNeg = fb?.negative.some((r) => r.video === chosen.video && r.n === chosen.n);
                       return (
                         <div key={k} className="shrink-0">
+                          <div className="relative">
+                            <button type="button" onClick={() => openDetail(chosen, navList)}
+                                    className={cx("block rounded-[var(--radius-sm)] border transition-colors",
+                                      weak ? "border-[var(--color-warn)]"
+                                           : "border-[var(--color-line)] hover:border-[var(--color-focus)]")}>
+                              <img src={thumbUrl(chosen.video, chosen.n)} alt="" loading="lazy"
+                                   className="h-[80px] w-[142px] bg-black object-cover" />
+                            </button>
+                            <div className="absolute right-0.5 top-0.5 flex gap-0.5">
+                              <button type="button"
+                                      onClick={() => markFromResult(k, { video: chosen.video, n: chosen.n }, "positive")}
+                                      title="Đúng sự kiện này — dịch vector tìm về hướng khung này"
+                                      className={cx("rounded-[2px] border p-0.5 backdrop-blur-sm",
+                                        isPos ? "border-[var(--color-ok)] bg-[var(--color-ok)] text-black"
+                                              : "border-[var(--color-line)] bg-[color-mix(in_srgb,black_60%,transparent)] text-[var(--color-fg-mute)] hover:text-[var(--color-ok)]")}>
+                                <ThumbsUp size={9} />
+                              </button>
+                              <button type="button"
+                                      onClick={() => markFromResult(k, { video: chosen.video, n: chosen.n }, "negative")}
+                                      title="Sai — dịch vector tìm ra xa khung này"
+                                      className={cx("rounded-[2px] border p-0.5 backdrop-blur-sm",
+                                        isNeg ? "border-[var(--color-err)] bg-[var(--color-err)] text-black"
+                                              : "border-[var(--color-line)] bg-[color-mix(in_srgb,black_60%,transparent)] text-[var(--color-fg-mute)] hover:text-[var(--color-err)]")}>
+                                <ThumbsDown size={9} />
+                              </button>
+                            </div>
+                          </div>
                           <button type="button" onClick={() => openDetail(chosen, navList)}
-                                  className={cx("block rounded-[var(--radius-sm)] border transition-colors",
-                                    weak ? "border-[var(--color-warn)]"
-                                         : "border-[var(--color-line)] hover:border-[var(--color-focus)]")}>
-                            <img src={thumbUrl(chosen.video, chosen.n)} alt="" loading="lazy"
-                                 className="h-[80px] w-[142px] bg-black object-cover" />
+                                  className="block w-full text-left">
                             <div className="px-1 py-0.5 text-left">
                               <div className="font-mono text-[9.5px] text-[var(--color-focus)]">E{k + 1}</div>
                               <div className="font-mono text-[9.5px] tabular-nums text-[var(--color-fg-mute)]">

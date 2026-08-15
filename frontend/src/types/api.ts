@@ -153,6 +153,9 @@ export interface TemporalRequest {
   locked_frames?: (number | null)[] | null;
   gap_constraints?: { from: number; to: number; min_s?: number | null; max_s?: number | null }[];
   alternates_per_event?: number;
+  // Phản hồi liên quan RIÊNG từng sự kiện — key = chỉ số sự kiện (0-based).
+  // Đánh dấu ✓/✗ trên khung của sự kiện nào chỉ dịch vector của đúng sự kiện đó.
+  feedback?: Record<number, FeedbackConfig>;
 }
 export interface TemporalEventHit extends SearchHit { alternates?: SearchHit[] }
 export interface TemporalCandidate {
@@ -161,7 +164,12 @@ export interface TemporalCandidate {
   hits: TemporalEventHit[];
   breakdown?: Record<string, number> | null;
 }
-export interface TemporalResponse { candidates: TemporalCandidate[] }
+export interface TemporalResponse {
+  candidates: TemporalCandidate[];
+  // Mệnh đề THỰC SỰ đã dùng để encode cho từng sự kiện, cùng thứ tự với events
+  // gửi lên — event_clauses[i] == [events[i]] nghĩa là không tách thêm được.
+  event_clauses?: string[][];
+}
 
 // ==================== Video / media ====================
 
