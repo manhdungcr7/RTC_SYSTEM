@@ -69,6 +69,14 @@ class TemporalRequest(BaseModel):
     # với /search, CHỈ đổi vector đầu vào trước DP, không đụng thuật toán.
     feedback: dict[int, FeedbackConfig] | None = None
 
+    # Ghi đè tay mệnh đề đã tách CHO TỪNG sự kiện — key = chỉ số sự kiện, value
+    # = danh sách câu mệnh đề TỰ VIẾT, thay hẳn cho việc gọi LLM tách tự động
+    # (core.query_service.clauses_metaclip2) cho ĐÚNG sự kiện đó. Sự kiện không
+    # có mặt trong dict này vẫn tách tự động như cũ — không phải tất-cả-hoặc-
+    # không-gì, cùng nguyên tắc với ocr_queries/asr_queries. CHỈ đổi câu đưa vào
+    # encode, không đụng gì DP/boundary-anchor phía sau.
+    clauses_override: dict[int, list[str]] | None = None
+
 
 class TemporalEventHit(SearchHit):
     alternates: list[SearchHit] = []

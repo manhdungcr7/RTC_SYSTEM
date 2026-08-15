@@ -156,6 +156,9 @@ export interface TemporalRequest {
   // Phản hồi liên quan RIÊNG từng sự kiện — key = chỉ số sự kiện (0-based).
   // Đánh dấu ✓/✗ trên khung của sự kiện nào chỉ dịch vector của đúng sự kiện đó.
   feedback?: Record<number, FeedbackConfig>;
+  // Ghi đè tay mệnh đề đã tách CHO TỪNG sự kiện — key = chỉ số sự kiện, value =
+  // danh sách câu tự viết, thay hẳn tách tự động cho ĐÚNG sự kiện đó.
+  clauses_override?: Record<number, string[]>;
 }
 export interface TemporalEventHit extends SearchHit { alternates?: SearchHit[] }
 export interface TemporalCandidate {

@@ -37,9 +37,11 @@ interface EventRow {
   /** frame_idx người dùng đã tự tìm ra và chắc chắn đúng — ép thuật toán đi qua
    *  đúng khung này, chỉ còn phải tìm các sự kiện còn lại quanh nó. */
   locked: string;
+  /** Mệnh đề TỰ VIẾT, thay cho tách tự động — rỗng = vẫn tách tự động (mặc định). */
+  clausesOverride: string[];
 }
 
-const newEvent = (): EventRow => ({ text: "", ocr: "", asr: "", anchor: false, locked: "" });
+const newEvent = (): EventRow => ({ text: "", ocr: "", asr: "", anchor: false, locked: "", clausesOverride: [] });
 
 type WeightState = Record<string, { enabled: boolean; weight: number }>;
 // Nhánh THỊ GIÁC — trộn vào vector sự kiện trước khi so khớp.
@@ -126,6 +128,10 @@ export function TemporalPage() {
         if (f && (f.positive.length || f.negative.length))
           feedbackPayload[newIdx] = { positive: f.positive, negative: f.negative, beta: 0.6, gamma: 0.3 };
       });
+      const clausesOverridePayload: Record<number, string[]> = {};
+      valid.forEach(({ e }, newIdx) => {
+        if (e.clausesOverride.length) clausesOverridePayload[newIdx] = e.clausesOverride;
+      });
       return api.temporal({
         events: valid.map(({ e }) => e.text),
         context: context.trim() || undefined,
@@ -139,6 +145,7 @@ export function TemporalPage() {
         signals,
         video_scope: scope.videos.length ? scope.videos : null,
         feedback: Object.keys(feedbackPayload).length ? feedbackPayload : undefined,
+        clauses_override: Object.keys(clausesOverridePayload).length ? clausesOverridePayload : undefined,
       });
     },
     onSuccess: () => setSwaps({}),
@@ -254,16 +261,53 @@ export function TemporalPage() {
                     </div>
                   </div>
                 )}
-                {/* Mệnh đề THỰC SỰ đã dùng để mã hoá sự kiện này (sau lần tìm gần
-                    nhất) — trước đây chạy hoàn toàn ngầm, không có gì để kiểm. */}
-                {(clausesFor(i)?.length ?? 0) > 1 && (
-                  <div className="ml-7 flex flex-wrap gap-1">
+                {/* Mệnh đề dùng để mã hoá sự kiện này — mặc định tự tách (LLM),
+                    xem được sau lần tìm gần nhất, và SỬA/THÊM/XOÁ tay được: bấm
+                    "Tự sửa" để bắt đầu ghi đè, ghi đè thắng tách tự động cho
+                    ĐÚNG sự kiện này ở lần tìm tiếp theo. */}
+                {ev.clausesOverride.length > 0 ? (
+                  <div className="ml-7 flex flex-col gap-1">
+                    {ev.clausesOverride.map((c, ci) => (
+                      <div key={ci} className="flex items-center gap-1">
+                        <TextInput value={c}
+                                   onChange={(e) => setEv(i, {
+                                     clausesOverride: ev.clausesOverride.map((x, k) => (k === ci ? e.target.value : x)),
+                                   })}
+                                   placeholder={`Mệnh đề ${ci + 1}`}
+                                   className="flex-1 py-0.5 text-[11px]" />
+                        <button type="button"
+                                onClick={() => setEv(i, { clausesOverride: ev.clausesOverride.filter((_, k) => k !== ci) })}
+                                aria-label="Xoá mệnh đề"
+                                className="shrink-0 p-0.5 text-[var(--color-fg-mute)] hover:text-[var(--color-err)]">
+                          <X size={11} />
+                        </button>
+                      </div>
+                    ))}
+                    <div className="flex items-center gap-1">
+                      <Button size="sm" variant="ghost"
+                              onClick={() => setEv(i, { clausesOverride: [...ev.clausesOverride, ""] })}>
+                        <Plus size={10} /> Thêm mệnh đề
+                      </Button>
+                      <Button size="sm" variant="ghost"
+                              onClick={() => setEv(i, { clausesOverride: [] })}>
+                        Khôi phục tự động
+                      </Button>
+                    </div>
+                  </div>
+                ) : (clausesFor(i)?.length ?? 0) > 0 && (
+                  <div className="ml-7 flex flex-wrap items-center gap-1">
                     {clausesFor(i)!.map((c, ci) => (
                       <span key={ci}
                             className="rounded-full border border-[var(--color-line)] px-1.5 py-0.5 text-[9.5px] text-[var(--color-fg-mute)]">
                         {c}
                       </span>
                     ))}
+                    <button type="button"
+                            onClick={() => setEv(i, { clausesOverride: clausesFor(i)! })}
+                            title="Tự sửa mệnh đề đã tách"
+                            className="text-[9.5px] text-[var(--color-focus)] hover:underline">
+                      ✎ Tự sửa
+                    </button>
                   </div>
                 )}
               </div>

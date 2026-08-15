@@ -110,7 +110,17 @@ def temporal(req: TemporalRequest,
     # vế (đa số case TRAKE) -> clauses_metaclip2 trả về đúng 1 phần tử, kết quả y
     # hệt hành vi cũ (search_temporal tự nhận biết case 1-mệnh-đề, xem core.
     # temporal.py). CHỈ đổi ĐẦU VÀO của bước encode, không đụng DP/boundary-anchor.
-    event_clauses = [clauses_metaclip2(t) or [t] for t in texts]
+    # `clauses_override[i]` (nếu có) THẮNG tách tự động — người dùng tự viết lại
+    # mệnh đề cho ĐÚNG sự kiện đó, sự kiện không ghi đè vẫn tách tự động như cũ.
+    def _clauses_for(i: int, text: str) -> list[str]:
+        override = req.clauses_override.get(i) if req.clauses_override else None
+        if override:
+            cleaned_override = [c.strip() for c in override if c.strip()]
+            if cleaned_override:
+                return cleaned_override
+        return clauses_metaclip2(text) or [text]
+
+    event_clauses = [_clauses_for(i, t) for i, t in enumerate(texts)]
     flat_texts = [c for clist in event_clauses for c in clist]
     flat_vecs = encoders.metaclip2.encode(flat_texts)
     event_clause_vecs: list[np.ndarray] = []
