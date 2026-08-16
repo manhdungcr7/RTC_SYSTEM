@@ -373,14 +373,14 @@ def search(req: SearchRequest,
         add_signal("dinov3", "DINOv3 (ảnh giống)", vector_search("dinov3", ref_vec),
                     _branch_weight(req, "dinov3", C.DINOV3_WEIGHT.get(kind, 0.5)), ref_label)
 
-    # ---- object + màu + vị trí lưới ----
+    # ---- object + màu (đã bỏ vị trí lưới — xem ObjectCond) ----
     if req.objects:
         conds = [o.model_dump() for o in req.objects]
         label = " · ".join(
-            f"{o.cls}{'/' + o.color if o.color else ''}{'/ô' + str(o.grid) if o.grid else ''}"
+            f"{o.cls}{'/' + o.color if o.color else ''}"
             for o in req.objects)
         scored = meili.search_objects_conds(conds, WIDE_TOPK, videos=scope_videos)
-        add_signal("object", "Vật thể + màu + vị trí",
+        add_signal("object", "Vật thể + màu",
                     sorted(scored.items(), key=lambda kv: -kv[1]),
                     _branch_weight(req, "object", C.COLOR_WEIGHT), label)
     elif req.object_query:

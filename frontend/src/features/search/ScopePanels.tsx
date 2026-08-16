@@ -174,6 +174,13 @@ export function VideoScopePanel({ value, onChange }: {
   const [picked, setPicked] = useState<Set<string>>(new Set(value.videos));
   const [manualInput, setManualInput] = useState("");
 
+  // `picked` là nháp CỤC BỘ (chưa "Áp dụng") — nhưng `value.videos` có thể đổi
+  // TỪ BÊN NGOÀI mà component không hề hay biết, chủ yếu khi đổi phiên làm việc
+  // (mỗi tab q01/q02/q03 có scopeVideos riêng — xem SessionVideoScopePanel).
+  // Không đồng bộ lại thì `picked` giữ tick của phiên CŨ, bấm "Áp dụng" ở phiên
+  // MỚI sẽ áp nhầm danh sách của phiên trước — ĐÃ ĐO ra khi review, sửa ở đây.
+  useEffect(() => { setPicked(new Set(value.videos)); }, [value.videos]);
+
   const addManual = () => {
     const parsed = manualInput.split(/[\s,;]+/).map((v) => v.trim()).filter(Boolean);
     if (parsed.length === 0) return;
