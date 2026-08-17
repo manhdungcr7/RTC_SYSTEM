@@ -67,7 +67,16 @@ class MediaIndex:
         """Bảng map ĐẦY ĐỦ của 1 video: [{n, frame_idx, pts_time, fps}] sort theo n.
         Đây là NGUỒN CHÂN LÝ để quy đổi giây <-> frame_idx (đồng hồ frame_idx ở
         khung xem chi tiết). Đọc bằng TÊN CỘT (csv.DictReader) chứ không theo vị
-        trí — thứ tự cột của bộ dữ liệu này KHÁC hệ cũ."""
+        trí — thứ tự cột của bộ dữ liệu này KHÁC hệ cũ.
+
+        +1 NGAY TẠI ĐÂY (nguồn đọc CSV): CSV lưu chỉ số 0-based từ decord (khung
+        ĐẦU TIÊN của video = 0, quy ước lập trình thông thường). BTC xác nhận
+        trực tiếp: khung ĐẦU TIÊN của video tính là frame 1 (không phải 0) —
+        đúng theo cách Media Player Classic (công cụ BTC gợi ý để tự kiểm tra
+        frame_idx, Ctrl+G/Navigate→Go To) đếm khung. +1 ở NGUỒN đọc CSV (nơi
+        DUY NHẤT đọc trực tiếp cột frame_idx thô) để MỌI nơi dùng dữ liệu này
+        (đồng hồ frame_idx lúc tua video, /videos/*/map, /videos/*/keyframes)
+        tự động nhất quán, không phải nhớ +1 rải rác ở từng chỗ dùng."""
         cached = self._full_map_cache.get(video)
         if cached is not None:
             return cached
@@ -79,7 +88,7 @@ class MediaIndex:
                     try:
                         rows.append({
                             "n": int(row["n"]),
-                            "frame_idx": int(row["frame_idx"]),
+                            "frame_idx": int(row["frame_idx"]) + 1,
                             "pts_time": float(row["pts_time"]),
                             "fps": float(row.get("fps") or 0.0),
                         })

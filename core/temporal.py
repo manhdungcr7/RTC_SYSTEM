@@ -369,14 +369,20 @@ def _aligned_branch_scores(faiss_repo: FaissRepo, branch: str, video: str,
 
 def _videos_containing_frames(repo: FaissRepo, collection: str,
                                locked: list[int | None]) -> set[str]:
-    """Video nào chứa TẤT CẢ các frame_idx đã khoá — giao các tập lại."""
+    """Video nào chứa TẤT CẢ các frame_idx đã khoá — giao các tập lại.
+
+    Đọc THẲNG `repo._meta` (metadata thô, VẪN 0-based) thay vì qua
+    fetch_video_vectors()/fetch_by_ids() (2 hàm đó đã +1 khi trả ra — xem
+    docstring core.repositories.faiss_repo) — nên `f` (frame_idx người dùng
+    tự nhập, 1-based theo quy ước BTC) phải TRỪ 1 lại trước khi so khớp với
+    cột thô, không thì không bao giờ khớp được video nào."""
     wanted = [f for f in locked if f is not None]
     if not wanted:
         return set()
     meta = repo._meta[collection]                      # noqa: SLF001
     out: set[str] | None = None
     for f in wanted:
-        vids = set(meta.loc[meta["frame_idx"] == f, "video"].unique())
+        vids = set(meta.loc[meta["frame_idx"] == f - 1, "video"].unique())
         out = vids if out is None else (out & vids)
         if not out:
             return set()

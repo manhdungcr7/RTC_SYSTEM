@@ -106,7 +106,14 @@ class FaissRepo:
 
     def fetch_video_vectors(self, collection: str, video: str):
         """Toàn bộ vector của 1 video, SẮP theo `n` tăng dần — dùng cho DANTE DP.
-        Trả (ids, ns, frame_idxs, vectors[K,D])."""
+        Trả (ids, ns, frame_idxs, vectors[K,D]).
+
+        `frame_idxs` trả ra là số ĐÃ +1 (1-based, khớp Media Player Classic/BTC
+        — xem docstring core.media_index._load_full_map). Metadata parquet gốc
+        (`meta["frame_idx"]`) vẫn giữ NGUYÊN 0-based, không đụng tới — +1 chỉ áp
+        khi ĐỌC RA khỏi đây, nơi DUY NHẤT các router lấy frame_idx để trả cho
+        client/dùng trong DP (xem core.temporal._videos_containing_frames — nơi
+        HIẾM HOI đọc thẳng `_meta` bỏ qua hàm này, phải tự trừ 1 lại)."""
         idx = self._indices[collection]
         meta = self._meta[collection]
         positions = self._video_pos[collection].get(video, [])
@@ -117,9 +124,11 @@ class FaissRepo:
         frame_idxs = meta["frame_idx"].values
         vecs = np.stack([idx.reconstruct(int(p)) for p in positions]).astype(np.float32)
         return ([ids[p] for p in positions], [int(ns[p]) for p in positions],
-                [int(frame_idxs[p]) for p in positions], vecs)
+                [int(frame_idxs[p]) + 1 for p in positions], vecs)
 
     def fetch_by_ids(self, collection: str, ids: list[str]) -> dict[str, tuple[str, int, int]]:
+        """Trả (video, n, frame_idx) — frame_idx ĐÃ +1 (1-based), xem
+        fetch_video_vectors() ở trên."""
         if not ids:
             return {}
         meta = self._meta[collection]
@@ -130,7 +139,7 @@ class FaissRepo:
             if p is None:
                 continue
             row = meta.iloc[p]
-            out[doc_id] = (row["video"], int(row["n"]), int(row["frame_idx"]))
+            out[doc_id] = (row["video"], int(row["n"]), int(row["frame_idx"]) + 1)
         return out
 
     def fetch_vector_by_id(self, collection: str, doc_id: str) -> np.ndarray | None:

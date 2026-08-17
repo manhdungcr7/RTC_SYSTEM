@@ -22,7 +22,6 @@ tín hiệu vô dụng trên thực tế (mỗi lần chỉnh phải chờ Kaggl
 from __future__ import annotations
 
 import base64
-import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -405,18 +404,14 @@ def search(req: SearchRequest,
         add_signal("object", "Vật thể (gõ tay)",
                     [(i, 1.0 - r / max(len(ids), 1)) for r, i in enumerate(ids)],
                     _branch_weight(req, "object", C.COLOR_WEIGHT), req.object_query)
-    elif (C.USE_OBJECT_COLOR and query_vi and translate.available()
-          and re.search(C.COLOR_CUES, query_vi, re.IGNORECASE)):
-        # search_objects() tra field "objects" (token tiếng Anh do YOLO sinh ra)
-        # — không dịch được (translate.available()=False) thì BỎ QUA hẳn nhánh
-        # này thay vì search bằng câu tiếng Việt (chắc chắn 0 kết quả, không
-        # phải "không tìm thấy" mà là tra sai ngôn ngữ — im lặng bỏ qua đúng
-        # hơn là giả vờ chạy).
-        color_query = " ".join(translate.vi2en(clauses_mc))
-        ids = meili.search_objects(color_query, WIDE_TOPK, videos=scope_videos)
-        add_signal("object", "Vật thể (tự nhận từ câu)",
-                    [(i, 1.0 - r / max(len(ids), 1)) for r, i in enumerate(ids)],
-                    _branch_weight(req, "object", C.COLOR_WEIGHT), color_query)
+    # ĐÃ BỎ nhánh tự nhận diện màu sắc trong câu truy vấn (USE_OBJECT_COLOR) —
+    # vi phạm nguyên tắc P4 (tự động = phải do người dùng bật, không phải máy tự
+    # quyết) VÀ màu sắc trong câu tự nhiên quá mơ hồ để trích ra 1 điều kiện lọc
+    # cứng đáng tin (vd "áo xanh dương trắng" có CẢ 2 màu; "lân vàng đen trắng"
+    # thực ra trắng là chủ đạo, đen ít, vàng chỉ ở viền vảy — không có "màu
+    # chính" rõ ràng để máy tự chọn). Để hẳn cho các nhánh embedding (metaclip2/
+    # pecore/beit3/capemb) xử lý màu sắc như một phần ngữ nghĩa của câu — người
+    # dùng muốn lọc CỨNG theo màu thì tự thêm ở "Vật thể + màu" (mục trên).
 
     # ============ 2. GỘP ĐIỂM (giữ phân rã cho bảng "Vì sao") ============
     fused, detail = fuse_with_explain(signal_data, k=fusion_k, method=fusion_method)

@@ -59,12 +59,16 @@ function nearestRow(rows: VideoMapRow[], t: number): VideoMapRow | null {
 export function computeReading(map: VideoMap | undefined, t: number): FrameReading {
   if (!map || map.rows.length === 0) {
     return {
-      frameIdx: 0, mediaTime: t, source: "measured",
+      frameIdx: 1, mediaTime: t, source: "measured",
       nearestKeyframe: null, deltaToNearest: 0, vfrWarning: false,
     };
   }
   const fps = map.fps > 0 ? map.fps : 25;
-  const byFps = Math.round(t * fps);
+  // +1: khung ĐẦU TIÊN (t=0) là frame 1, không phải 0 — khớp Media Player
+  // Classic/BTC (xem core/media_index.py, nơi map.rows.*.frame_idx đã +1 từ
+  // backend). Công thức tự tính tay ở đây phải cùng quy ước, không thì lệch
+  // hẳn 1 khung so với dữ liệu keyframe thật, kích hoạt báo VFR giả.
+  const byFps = Math.round(t * fps) + 1;
   const near = nearestRow(map.rows, t);
 
   // Đang đứng đúng một keyframe -> dùng thẳng frame_idx ĐO THẬT của nó (an toàn
@@ -80,7 +84,7 @@ export function computeReading(map: VideoMap | undefined, t: number): FrameReadi
   // đó thì fps không đáng tin -> nội suy tuyến tính giữa 2 keyframe kề.
   let vfr = false;
   if (near) {
-    const expectedAtNear = Math.round(near.pts_time * fps);
+    const expectedAtNear = Math.round(near.pts_time * fps) + 1;
     if (Math.abs(expectedAtNear - near.frame_idx) > VFR_TOLERANCE_FRAMES) vfr = true;
   }
 
@@ -182,10 +186,11 @@ export function useFrameIndex(videoRef: React.RefObject<HTMLVideoElement | null>
     const el = videoRef.current;
     if (!el || !map) return;
     // Ưu tiên pts_time ĐO THẬT của keyframe trùng frame_idx (chính xác tuyệt đối);
-    // không có thì mới quy đổi qua fps.
+    // không có thì mới quy đổi qua fps. frameIdx là 1-based (frame 1 = t=0) nên
+    // trừ 1 trước khi chia fps.
     const exact = map.rows.find((r) => r.frame_idx === frameIdx);
     const fps = map.fps > 0 ? map.fps : 25;
-    el.currentTime = exact ? exact.pts_time : frameIdx / fps + 0.5 / fps;
+    el.currentTime = exact ? exact.pts_time : (frameIdx - 1) / fps + 0.5 / fps;
   }, [videoRef, map]);
 
   return { reading, stepFrames, seekTo, seekToFrameIdx };

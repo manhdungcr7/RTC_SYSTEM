@@ -41,15 +41,11 @@ ASR_EMB_WEIGHT = {"kis": 0.15, "qa": 1.0, "trake": 0.15}
 # bắt chi tiết nhỏ/chữ tốt hơn KIS thị giác thuần).
 BEIT3_WEIGHT = {"kis": 0.2, "qa": 1.5, "trake": 0.2}
 
-# Object+màu: CHỈ bật khi query nêu RÕ vật (vốn từ OpenImages) + màu NGAY CẠNH —
-# bật cố định cho mọi câu HẠI NẶNG (đã đo, giống bài học OCR). Regex chặt.
-USE_OBJECT_COLOR = True
-COLOR_CUES = (
-    r"(mũ|nón) bảo hiểm.{0,15}(đỏ|xanh|vàng|cam|tím|hồng|trắng|đen|xám|nâu)|"
-    r"(đỏ|xanh|vàng|cam|tím|hồng|trắng|đen|xám|nâu).{0,10}(mũ|nón) bảo hiểm|"
-    r"xe (tải|máy|hơi|buýt|đạp|khách).{0,15}(màu )?(đỏ|xanh|vàng|cam|tím|hồng|trắng|đen|xám|nâu)|"
-    r"(đỏ|xanh|vàng|cam|tím|hồng|trắng|đen|xám|nâu).{0,10}xe (tải|máy|hơi|buýt|đạp|khách)"
-)
+# ĐÃ BỎ USE_OBJECT_COLOR/COLOR_CUES (tự nhận diện màu trong câu rồi tự lọc vật
+# thể) — vi phạm P4 (tự động phải do người dùng bật) và màu trong câu tự nhiên
+# quá mơ hồ để trích thành 1 điều kiện lọc cứng đáng tin (xem api/routers/
+# search.py). Người dùng tự thêm điều kiện Vật thể + màu khi muốn lọc cứng.
+#
 # ĐÃ HẠ (trước 2.0): đo thật thấy object đơn (vd "bicycle" không kèm màu/vị trí
 # đặc trưng) là vật thể QUÁ PHỔ BIẾN trong dữ liệu -> weight 2.0 (cao hơn cả
 # metaclip2=1.0) áp đảo tín hiệu hình ảnh ĐÚNG, kéo kết quả sang video không liên
