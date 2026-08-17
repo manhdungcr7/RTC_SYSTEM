@@ -109,6 +109,15 @@ class SearchRequest(BaseModel):
     topk: int = 100
     use_expansion: bool = True   # LLM tách mệnh đề (chỉ ĐỀ XUẤT, người dùng sửa được)
 
+    # Bật/tắt HẲN việc tự động tách mệnh đề (LLM hoặc heuristic) — người dùng có
+    # thể không muốn máy tự quyết định tách câu, chỉ muốn dùng NGUYÊN câu gốc.
+    # False -> encode nguyên câu query làm 1 mệnh đề DUY NHẤT, KHÔNG gọi LLM/tách
+    # câu (kể cả clauses_metaclip2 lẫn clauses_en cho pecore/beit3) — nhưng vẫn
+    # LUÔN dịch sang tiếng Anh cho pecore/beit3 (2 nhánh này chỉ hiểu tiếng Anh,
+    # không liên quan gì tới việc có tách câu hay không). `clauses` (ghi đè tay,
+    # nếu có) LUÔN thắng cờ này — đây là quyết định NGƯỜI DÙNG đã chủ động làm.
+    split_clauses: bool = True
+
     # ---- Đường CŨ (phẳng) — giữ nguyên để frontend cũ không gãy ----
     ocr_query: str | None = None
     asr_query: str | None = None

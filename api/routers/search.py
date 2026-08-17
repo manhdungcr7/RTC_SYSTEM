@@ -229,9 +229,15 @@ def search(req: SearchRequest,
         return vec_cache.encode_cached(branch, texts, encoder.encode)
 
     # ============ 1. Mệnh đề thị giác (LLM chỉ ĐỀ XUẤT — P4) ============
+    # Ưu tiên: ghi đè tay (req.clauses) > cờ split_clauses > mặc định tự tách.
     if req.clauses is not None:
         clauses_mc = [c.text for c in req.clauses if c.enabled and c.text.strip()]
         clause_w = [c.weight for c in req.clauses if c.enabled and c.text.strip()]
+    elif not req.split_clauses:
+        # Người dùng chủ động TẮT tự động tách — dùng NGUYÊN câu gốc, không gọi
+        # LLM/heuristic tách câu nào cả.
+        clauses_mc = [query_vi] if query_vi else []
+        clause_w = None
     else:
         clauses_mc = query_service.clauses_metaclip2(query_vi, use_expansion=req.use_expansion)
         clause_w = None
@@ -239,7 +245,18 @@ def search(req: SearchRequest,
     need_en = ((encoders.pecore is not None and _branch_on(req, "pecore")) or
                (encoders.beit3 is not None and _branch_on(req, "beit3")))
     if need_en:
-        clauses_en = query_service.clauses_en(query_vi)
+        # split_clauses TẮT -> vẫn LUÔN dịch (pecore/beit3 chỉ hiểu tiếng Anh),
+        # nhưng dịch NGUYÊN câu thành 1 khối, không để LLM tự tách thêm mệnh đề.
+        # translate.vi2en() cần model envit5 cục bộ (torch) — KHÔNG có trong image
+        # Docker nhẹ (chỉ dùng encoder từ xa) — available() tự dò an toàn, không
+        # có thì rơi về câu tiếng Việt gốc thay vì crash (2 nhánh này encode được
+        # tiếng Việt cũng không sai, chỉ là kém chính xác hơn bản dịch).
+        if req.split_clauses:
+            clauses_en = query_service.clauses_en(query_vi)
+        elif query_vi:
+            clauses_en = translate.vi2en([query_vi]) if translate.available() else [query_vi]
+        else:
+            clauses_en = []
         # Bản dịch do NGƯỜI DÙNG ghi đè thắng bản dịch tự động (P4) — điểm mù lớn
         # nếu để dịch chạy ngầm: dịch sai thì 2 nhánh PE-Core/BEiT-3 hỏng lặng lẽ.
         if req.translations:
@@ -388,7 +405,13 @@ def search(req: SearchRequest,
         add_signal("object", "Vật thể (gõ tay)",
                     [(i, 1.0 - r / max(len(ids), 1)) for r, i in enumerate(ids)],
                     _branch_weight(req, "object", C.COLOR_WEIGHT), req.object_query)
-    elif C.USE_OBJECT_COLOR and query_vi and re.search(C.COLOR_CUES, query_vi, re.IGNORECASE):
+    elif (C.USE_OBJECT_COLOR and query_vi and translate.available()
+          and re.search(C.COLOR_CUES, query_vi, re.IGNORECASE)):
+        # search_objects() tra field "objects" (token tiếng Anh do YOLO sinh ra)
+        # — không dịch được (translate.available()=False) thì BỎ QUA hẳn nhánh
+        # này thay vì search bằng câu tiếng Việt (chắc chắn 0 kết quả, không
+        # phải "không tìm thấy" mà là tra sai ngôn ngữ — im lặng bỏ qua đúng
+        # hơn là giả vờ chạy).
         color_query = " ".join(translate.vi2en(clauses_mc))
         ids = meili.search_objects(color_query, WIDE_TOPK, videos=scope_videos)
         add_signal("object", "Vật thể (tự nhận từ câu)",

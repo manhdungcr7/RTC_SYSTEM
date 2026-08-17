@@ -64,6 +64,7 @@ export function TemporalPage() {
   const [events, setEvents] = useState<EventRow[]>([
     { ...newEvent(), anchor: true }, { ...newEvent(), anchor: true },
   ]);
+  const [autoSplit, setAutoSplit] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [perEvent, setPerEvent] = useState(1500);
   const [weights, setWeights] = useState<WeightState>(initialWeights);
@@ -135,6 +136,7 @@ export function TemporalPage() {
       return api.temporal({
         events: valid.map(({ e }) => e.text),
         context: context.trim() || undefined,
+        split_clauses: autoSplit,
         ocr_queries: valid.map(({ e }) => e.ocr),
         asr_queries: valid.map(({ e }) => e.asr),
         anchor_indices: anchors.length === 2 ? anchors : null,
@@ -203,6 +205,20 @@ export function TemporalPage() {
             không nhắc lại. Không ảnh hưởng thuật toán dò chuỗi phía sau.
           </p>
 
+          <label className="mb-2 flex items-center gap-1.5 text-[11px] text-[var(--color-fg-dim)]">
+            <input type="checkbox" checked={autoSplit}
+                   onChange={(e) => setAutoSplit(e.target.checked)}
+                   className="h-3 w-3 accent-[var(--color-focus)]" />
+            Tự động tách mệnh đề (LLM) cho sự kiện chưa tự sửa
+          </label>
+          {!autoSplit && (
+            <p className="-mt-1 mb-2 text-[10px] leading-snug text-[var(--color-warn)]">
+              Đang TẮT — mỗi sự kiện chưa bấm "✎ Tự sửa" sẽ encode NGUYÊN câu,
+              không gọi LLM tách mệnh đề. Sự kiện đã tự sửa mệnh đề vẫn giữ
+              nguyên bản tự viết, không bị ảnh hưởng bởi cờ này.
+            </p>
+          )}
+
           <div className="mb-2 flex items-center justify-between">
             <Label className="mb-0">Chuỗi sự kiện theo thứ tự thời gian</Label>
             <span className="font-mono text-[10.5px] tabular-nums text-[var(--color-fg-mute)]">
@@ -218,16 +234,16 @@ export function TemporalPage() {
           <div className="flex flex-col gap-2">
             {events.map((ev, i) => (
               <div key={i} className="flex flex-col gap-1">
-                <div className="flex items-center gap-1">
-                  <span className="flex h-5 w-6 shrink-0 items-center justify-center rounded-[2px] bg-[var(--color-panel-3)] font-mono text-[10px] text-[var(--color-focus)]">
+                <div className="flex items-start gap-1">
+                  <span className="mt-1 flex h-5 w-6 shrink-0 items-center justify-center rounded-[2px] bg-[var(--color-panel-3)] font-mono text-[10px] text-[var(--color-focus)]">
                     E{i + 1}
                   </span>
-                  <TextInput value={ev.text} onChange={(e) => setEv(i, { text: e.target.value })}
-                             placeholder={`Sự kiện ${i + 1}…`} className="flex-1 py-1 text-[12px]" />
+                  <TextArea rows={1} value={ev.text} onChange={(e) => setEv(i, { text: e.target.value })}
+                            placeholder={`Sự kiện ${i + 1}…`} className="flex-1 py-1 text-[12px] leading-snug" />
                   <button type="button" onClick={() => toggleAnchor(i)}
                           title="Dùng sự kiện này làm neo thị giác"
                           aria-pressed={ev.anchor}
-                          className={cx("shrink-0 rounded-[2px] border p-1 transition-colors",
+                          className={cx("mt-1 shrink-0 rounded-[2px] border p-1 transition-colors",
                             ev.anchor
                               ? "border-[var(--color-focus)] text-[var(--color-focus)]"
                               : "border-[var(--color-line)] text-[var(--color-fg-mute)] hover:text-[var(--color-fg-dim)]")}>
@@ -236,7 +252,7 @@ export function TemporalPage() {
                   {events.length > 2 && (
                     <button type="button" onClick={() => setEvents((p) => p.filter((_, k) => k !== i))}
                             aria-label="Xoá sự kiện"
-                            className="shrink-0 p-1 text-[var(--color-fg-mute)] hover:text-[var(--color-err)]">
+                            className="mt-1 shrink-0 p-1 text-[var(--color-fg-mute)] hover:text-[var(--color-err)]">
                       <Trash2 size={11} />
                     </button>
                   )}
@@ -269,12 +285,12 @@ export function TemporalPage() {
                   <div className="ml-7 flex flex-col gap-1">
                     {ev.clausesOverride.map((c, ci) => (
                       <div key={ci} className="flex items-center gap-1">
-                        <TextInput value={c}
-                                   onChange={(e) => setEv(i, {
-                                     clausesOverride: ev.clausesOverride.map((x, k) => (k === ci ? e.target.value : x)),
-                                   })}
-                                   placeholder={`Mệnh đề ${ci + 1}`}
-                                   className="flex-1 py-0.5 text-[11px]" />
+                        <TextArea rows={1} value={c}
+                                  onChange={(e) => setEv(i, {
+                                    clausesOverride: ev.clausesOverride.map((x, k) => (k === ci ? e.target.value : x)),
+                                  })}
+                                  placeholder={`Mệnh đề ${ci + 1}`}
+                                  className="flex-1 py-0.5 text-[11px] leading-snug" />
                         <button type="button"
                                 onClick={() => setEv(i, { clausesOverride: ev.clausesOverride.filter((_, k) => k !== ci) })}
                                 aria-label="Xoá mệnh đề"
@@ -370,7 +386,7 @@ export function TemporalPage() {
           </div>
         </Section>
 
-        <Section title="Thu hẹp video" defaultOpen={false}>
+        <Section title="Thu hẹp video">
           <VideoScopePanel value={scope} onChange={setScope} />
         </Section>
 

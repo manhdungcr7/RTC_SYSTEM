@@ -202,7 +202,11 @@ def clauses_en(query_vi: str) -> list[str]:
         except Exception as e:
             print(f"[query_service] lỗi API ({type(e).__name__}) -> dùng envit5")
     cl = split_clauses(query_vi)
-    return _translate.vi2en(cl)
+    # translate.vi2en() cần model envit5 cục bộ (torch) — image Docker nhẹ (chỉ
+    # dùng encoder từ xa) không cài torch. Không có LLM key VÀ không có envit5
+    # cùng lúc -> rơi về câu tiếng Việt gốc thay vì crash (pecore/beit3 vẫn
+    # encode được, chỉ kém chính xác hơn có bản dịch thật).
+    return _translate.vi2en(cl) if _translate.available() else cl
 
 
 def clauses_metaclip2(query_vi: str, use_expansion: bool = True) -> list[str]:

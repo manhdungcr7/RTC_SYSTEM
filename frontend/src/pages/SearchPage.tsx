@@ -159,7 +159,7 @@ export function SearchPage() {
             <Section title="Vật thể · màu · vị trí" defaultOpen={false}><ObjectGridPicker /></Section>
             <Section title="Ảnh tham chiếu" defaultOpen={false}><RefImagePanel /></Section>
             <Section title="Loại trừ" defaultOpen={false}><NegativePanel /></Section>
-            <Section title="Thu hẹp video" defaultOpen={false}><SessionVideoScopePanel /></Section>
+            <Section title="Thu hẹp video"><SessionVideoScopePanel /></Section>
             <Section title="Gộp điểm &amp; chống trùng" defaultOpen={false}>
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-2">

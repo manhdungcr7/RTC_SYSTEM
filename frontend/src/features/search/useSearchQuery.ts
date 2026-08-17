@@ -28,6 +28,7 @@ export function buildRequest(s: SessionState, opts?: { explain?: boolean; branch
     kind: s.kind,
     topk: s.topk,
     use_expansion: true,
+    split_clauses: s.autoSplit,
     signals: buildSignals(s),
     clause_fusion: { mode: "max_alpha_mean", alpha: s.alpha },
     fusion: { method: "rrf", k: s.rrfK },

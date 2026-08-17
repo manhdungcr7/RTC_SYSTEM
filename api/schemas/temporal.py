@@ -27,6 +27,13 @@ class TemporalRequest(BaseModel):
     topk: int = 100
     per_event: int = 1500
 
+    # Bật/tắt HẲN việc tự động tách mệnh đề (LLM/heuristic) cho MỌI sự kiện chưa
+    # có `clauses_override` riêng — False = mỗi sự kiện encode NGUYÊN câu làm 1
+    # mệnh đề duy nhất, không gọi LLM tách. `clauses_override[i]` (nếu có) LUÔN
+    # thắng cờ này cho sự kiện đó — quyết định thủ công không bao giờ bị cờ mặc
+    # định này ghi đè.
+    split_clauses: bool = True
+
     # Ghi đè chữ/lời RIÊNG từng sự kiện — người biết chính xác chữ trên màn hình
     # của MỘT khoảnh khắc thì tự nhập cho đúng khoảnh khắc đó, các sự kiện khác
     # vẫn dùng câu mô tả (không phải tất-cả-hoặc-không-gì).

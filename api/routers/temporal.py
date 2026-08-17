@@ -118,6 +118,8 @@ def temporal(req: TemporalRequest,
             cleaned_override = [c.strip() for c in override if c.strip()]
             if cleaned_override:
                 return cleaned_override
+        if not req.split_clauses:
+            return [text]
         return clauses_metaclip2(text) or [text]
 
     event_clauses = [_clauses_for(i, t) for i, t in enumerate(texts)]

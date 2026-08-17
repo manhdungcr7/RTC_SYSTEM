@@ -32,6 +32,7 @@ export interface SessionState {
   kind: QueryKind;
 
   query: string;
+  autoSplit: boolean;         // false = KHÔNG tự tách mệnh đề/mở rộng câu, dùng nguyên câu gốc
   clauses: ClauseConfig[];
   clausesDirty: boolean;      // true = người dùng đã sửa tay, không ghi đè bằng LLM nữa
   alpha: number;
@@ -81,6 +82,7 @@ export function makeSession(id: string, label?: string): SessionState {
     label: label ?? id,
     kind: "kis",
     query: "",
+    autoSplit: true,
     clauses: [],
     clausesDirty: false,
     alpha: 0.3,

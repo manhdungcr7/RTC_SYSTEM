@@ -9,7 +9,7 @@
 import { Languages, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { Button, Label, TextArea, TextInput, cx } from "../../components/ui";
+import { Button, Label, TextArea, cx } from "../../components/ui";
 import { useSession } from "../../stores/sessionStore";
 import { useClauseSuggest } from "./useSearchQuery";
 
@@ -56,6 +56,21 @@ export function QueryPanel({ onSubmit }: { onSubmit: () => void }) {
         data-query-box
       />
 
+      <label className="flex items-center gap-1.5 text-[11px] text-[var(--color-fg-dim)]">
+        <input type="checkbox" checked={s.autoSplit}
+               onChange={(e) => patch({ autoSplit: e.target.checked })}
+               className="h-3 w-3 accent-[var(--color-focus)]" />
+        Tự động tách mệnh đề + mở rộng câu (LLM)
+      </label>
+      {!s.autoSplit && s.clauses.length === 0 && (
+        <p className="-mt-1 text-[10px] leading-snug text-[var(--color-warn)]">
+          Đang TẮT — hệ thống sẽ encode nguyên câu gốc làm 1 mệnh đề duy nhất,
+          không gọi LLM tách/mở rộng câu. Bản dịch cho PE-Core/BEiT-3 vẫn luôn
+          chạy (2 nhánh đó chỉ hiểu tiếng Anh), chỉ khác là dịch nguyên câu
+          thay vì dịch từng mệnh đề đã tách.
+        </p>
+      )}
+
       <div className="flex items-center gap-1.5">
         <Button size="sm" onClick={doSuggest} disabled={!s.query.trim() || suggest.isPending}>
           <Sparkles size={11} />
@@ -83,11 +98,12 @@ export function QueryPanel({ onSubmit }: { onSubmit: () => void }) {
                 aria-label={`Bật mệnh đề ${i + 1}`}
                 className="h-3 w-3 shrink-0 accent-[var(--color-focus)]"
               />
-              <TextInput
+              <TextArea
+                rows={1}
                 value={c.text}
                 onChange={(e) => setClause(i, { text: e.target.value })}
                 placeholder={`Mệnh đề ${i + 1}`}
-                className="flex-1 py-1 text-[12px]"
+                className="flex-1 py-1 text-[12px] leading-snug"
               />
               <input
                 type="text" inputMode="decimal" value={c.weight.toFixed(1)}
@@ -130,14 +146,14 @@ export function QueryPanel({ onSubmit }: { onSubmit: () => void }) {
             nên bản dịch luôn hiện ra ở đây để bạn kiểm và sửa.
           </p>
           {enDraft.map((t, i) => (
-            <TextInput
-              key={i} value={s.translations[i] ?? t}
+            <TextArea
+              key={i} rows={1} value={s.translations[i] ?? t}
               onChange={(e) =>
                 patch({
                   translations: { ...s.translations, [i]: e.target.value },
                   translationsDirty: true,
                 })}
-              className="py-1 text-[12px]"
+              className="py-1 text-[12px] leading-snug"
             />
           ))}
         </div>

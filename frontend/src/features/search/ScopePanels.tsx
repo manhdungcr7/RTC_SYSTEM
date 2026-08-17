@@ -222,6 +222,46 @@ export function VideoScopePanel({ value, onChange }: {
         </div>
       )}
 
+      {/* Bấm 1 phát ra ngay cả thể loại — đây là cách dùng NHANH NHẤT và phổ biến
+          nhất của "Thu hẹp video", nên đặt lên đầu, làm to/rõ thay vì giấu trong
+          1 dropdown nhỏ như trước (nhiều người dùng không biết nó tồn tại). */}
+      <div className="rounded-[var(--radius-sm)] border-2 border-[var(--color-focus)] bg-[color-mix(in_srgb,var(--color-focus)_8%,transparent)] p-2">
+        <Label className="mb-1.5 text-[12px] font-semibold text-[var(--color-fg)]">
+          📁 Thu hẹp nhanh theo thể loại
+        </Label>
+        {cats.length === 0 ? (
+          <p className="text-[10.5px] text-[var(--color-fg-mute)]">Đang tải danh sách thể loại…</p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {cats.map((c) => (
+              <button
+                key={c} type="button"
+                onClick={() => { setCat(c); setQ(""); search.mutate(); }}
+                aria-pressed={cat === c}
+                className={cx(
+                  "rounded-full border-2 px-3 py-1.5 text-[12px] font-medium transition-colors",
+                  cat === c
+                    ? "border-[var(--color-focus)] bg-[var(--color-focus)] text-black"
+                    : "border-[var(--color-line-hi)] bg-[var(--color-panel-2)] text-[var(--color-fg)] hover:border-[var(--color-focus)]",
+                )}
+              >
+                {c}
+              </button>
+            ))}
+            {cat && (
+              <button type="button" onClick={() => { setCat(""); setQ(""); }}
+                      className="rounded-full border-2 border-dashed border-[var(--color-line)] px-3 py-1.5 text-[12px] text-[var(--color-fg-mute)] hover:text-[var(--color-fg)]">
+                ✕ Bỏ chọn thể loại
+              </button>
+            )}
+          </div>
+        )}
+        <p className="mt-1.5 text-[10px] leading-snug text-[var(--color-fg-mute)]">
+          Bấm 1 thể loại là tìm ngay toàn bộ video thuộc thể loại đó — rồi tick
+          chọn video muốn dùng ở danh sách hiện ra bên dưới.
+        </p>
+      </div>
+
       <div className="flex flex-col gap-1 rounded-[var(--radius-sm)] border border-dashed border-[var(--color-line)] p-2">
         <Label className="mb-0">Dán danh sách video cụ thể</Label>
         <p className="text-[10px] leading-snug text-[var(--color-fg-mute)]">
@@ -245,21 +285,22 @@ export function VideoScopePanel({ value, onChange }: {
                  onKeyDown={(e) => e.key === "Enter" && search.mutate()}
                  placeholder="Nội dung video… (để trống nếu chỉ lọc theo thể loại)" />
       <div className="flex gap-1">
-        <Select value={cat} onChange={(e) => setCat(e.target.value)} className="flex-1 py-1 text-[12px]">
-          <option value="">Mọi thể loại</option>
-          {cats.map((c) => <option key={c} value={c}>{c}</option>)}
-        </Select>
         <Select value={field} onChange={(e) => setField(e.target.value as typeof field)}
-                className="w-[104px] py-1 text-[12px]">
-          <option value="all">Cả hai</option>
-          <option value="asr">Lời thoại</option>
-          <option value="caption">Hình ảnh</option>
+                className="flex-1 py-1 text-[12px]">
+          <option value="all">Tìm trong: Cả hai</option>
+          <option value="asr">Tìm trong: Lời thoại</option>
+          <option value="caption">Tìm trong: Hình ảnh</option>
         </Select>
       </div>
 
       <Button size="sm" onClick={() => search.mutate()} disabled={search.isPending || (!q.trim() && !cat)}>
         <Search size={11} /> {search.isPending ? "Đang tìm…" : "Tìm video"}
       </Button>
+      {cat && (
+        <p className="text-[10px] text-[var(--color-fg-mute)]">
+          Đang lọc theo thể loại: <b className="text-[var(--color-focus)]">{cat}</b>
+        </p>
+      )}
 
       {hits.length > 0 && (
         <>

@@ -75,6 +75,7 @@ export interface SearchRequest {
   kind?: QueryKind;
   topk?: number;
   use_expansion?: boolean;
+  split_clauses?: boolean;
   signals?: Record<string, SignalConfig>;
   clauses?: ClauseConfig[];
   clause_fusion?: { mode: "max_alpha_mean"; alpha: number };
@@ -143,6 +144,7 @@ export interface TemporalRequest {
   context?: string;
   topk?: number;
   per_event?: number;
+  split_clauses?: boolean;
   ocr_queries?: string[];
   asr_queries?: string[];
   // ĐÃ BỎ lambda_penalty — Temporal LUÔN không phạt khoảng cách thời gian, xem
