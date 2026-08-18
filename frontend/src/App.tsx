@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Route, Routes } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { Toaster } from "sonner";
 
 import { ConnectionDialog, ShortcutsDialog } from "./app/Dialogs";
@@ -18,15 +18,32 @@ const qc = new QueryClient({
   },
 });
 
+/** Cả 2 trang LUÔN mounted, chỉ ẩn/hiện bằng CSS (display:contents/none) thay
+ *  vì để React Router unmount trang không active — chuyển tab trước đây làm
+ *  MẤT SẠCH state cục bộ của trang kia (câu query, kết quả tìm, chuỗi sự kiện
+ *  đang soạn...) vì component bị huỷ hoàn toàn rồi tạo lại từ đầu lúc quay lại.
+ *  `display:contents` khi đang hiện để trang bên trong vẫn là flex item trực
+ *  tiếp của khung cha (không tạo thêm 1 lớp box chen vào layout). */
+function Pages() {
+  const { pathname } = useLocation();
+  return (
+    <>
+      <div style={{ display: pathname === "/" ? "contents" : "none" }}>
+        <SearchPage />
+      </div>
+      <div style={{ display: pathname === "/temporal" ? "contents" : "none" }}>
+        <TemporalPage />
+      </div>
+    </>
+  );
+}
+
 export function App() {
   return (
     <QueryClientProvider client={qc}>
       <div className="flex h-full flex-col">
         <Topbar />
-        <Routes>
-          <Route path="/" element={<SearchPage />} />
-          <Route path="/temporal" element={<TemporalPage />} />
-        </Routes>
+        <Pages />
       </div>
       <DetailOverlay />
       <WorkbenchOverlay />

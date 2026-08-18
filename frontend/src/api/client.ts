@@ -1,7 +1,7 @@
 /** Lớp gọi API duy nhất. Mọi request đi qua /api/* (Vite proxy khi dev, nginx
  *  khi chạy thật — xem docker/nginx.conf). Ảnh/video đi thẳng /media/*. */
 import type {
-  HealthStatus, SearchRequest, SearchResponse, TemporalRequest, TemporalResponse,
+  HealthStatus, SearchHit, SearchRequest, SearchResponse, TemporalRequest, TemporalResponse,
   VideoMap, VideoSearchResponse,
 } from "../types/api";
 
@@ -72,6 +72,19 @@ export const api = {
   submitPreview: (kind: string, rows: unknown[][], n_events?: number | null) =>
     post<{ csv_text: string; errors: string[] }>("/submit/build",
       { kind, rows, n_events: n_events ?? null }),
+
+  /** Tra tay 1 khung hình theo (video, frame_idx) — xem api/routers/media.py.
+   *  Đi qua `/media/` (không phải `/api/`) — cùng cách thumbUrl/videoUrl gọi. */
+  lookupFrame: async (video: string, frameIdx: number, signal?: AbortSignal): Promise<SearchHit> => {
+    const res = await fetch(
+      `/media/lookup/${encodeURIComponent(video)}?frame_idx=${encodeURIComponent(frameIdx)}`,
+      { signal });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new ApiError(text || `Máy chủ trả lỗi ${res.status}`, res.status);
+    }
+    return res.json();
+  },
 
   submitPack: async (files: Record<string, string>): Promise<Blob> => {
     const res = await fetch(`${API}/submit/pack`, {

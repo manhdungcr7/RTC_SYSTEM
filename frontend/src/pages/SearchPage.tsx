@@ -5,7 +5,7 @@ import { PanelLeftClose, PanelRightClose, Search as SearchIcon, ThumbsDown, Thum
 import { useCallback, useEffect, useMemo } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 
-import { Button, Section, cx } from "../components/ui";
+import { Button, ResizeHandle, Section, cx } from "../components/ui";
 import { Inspector } from "../features/inspector/Inspector";
 import { ResultArea } from "../features/results/ResultArea";
 import { QueryPanel } from "../features/search/QueryPanel";
@@ -53,6 +53,10 @@ export function SearchPage() {
 
   const leftOpen = useUi((s) => s.leftOpen);
   const rightOpen = useUi((s) => s.rightOpen);
+  const leftWidth = useUi((s) => s.leftWidth);
+  const rightWidth = useUi((s) => s.rightWidth);
+  const setLeftWidth = useUi((s) => s.setLeftWidth);
+  const setRightWidth = useUi((s) => s.setRightWidth);
   const toggleLeft = useUi((s) => s.toggleLeft);
   const toggleRight = useUi((s) => s.toggleRight);
   const cursor = useUi((s) => s.cursor);
@@ -143,7 +147,9 @@ export function SearchPage() {
       <div className="flex min-h-0 flex-1">
         {/* ---------- Cột trái: bàn trộn + mọi đòn bẩy ---------- */}
         {leftOpen && (
-          <aside className="flex w-[336px] shrink-0 flex-col overflow-y-auto border-r border-[var(--color-line)] bg-[var(--color-panel)]">
+          <>
+          <aside style={{ width: leftWidth }}
+                 className="flex shrink-0 flex-col overflow-y-auto border-r border-[var(--color-line)] bg-[var(--color-panel)]">
             <div className="border-b border-[var(--color-line)] p-3">
               <QueryPanel onSubmit={submit} />
               <Button variant="primary" className="mt-2 w-full" onClick={submit}
@@ -191,6 +197,8 @@ export function SearchPage() {
               </div>
             </Section>
           </aside>
+          <ResizeHandle side="left" width={leftWidth} onResize={setLeftWidth} />
+          </>
         )}
 
         {/* ---------- Giữa: kết quả ---------- */}
@@ -204,9 +212,13 @@ export function SearchPage() {
 
         {/* ---------- Cột phải: tra cứu ---------- */}
         {rightOpen && (
-          <aside className="w-[366px] shrink-0 border-l border-[var(--color-line)] bg-[var(--color-panel)]">
+          <>
+          <ResizeHandle side="right" width={rightWidth} onResize={setRightWidth} />
+          <aside style={{ width: rightWidth }}
+                 className="shrink-0 border-l border-[var(--color-line)] bg-[var(--color-panel)]">
             <Inspector current={current} submitPanel={<SubmitPanel />} />
           </aside>
+          </>
         )}
       </div>
 

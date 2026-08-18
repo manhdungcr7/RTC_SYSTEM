@@ -28,6 +28,15 @@ import {
 import type { DraftFile, DraftRow } from "../../stores/submissionStore";
 import type { QueryKind } from "../../types/api";
 
+/** Đổi đuôi -kis/-qa/-trake theo loại task đang chọn — người dùng đổi task thì
+ *  không phải nhớ tự sửa tay tên file theo, dễ quên -> nộp nhầm đuôi cũ. Tên
+ *  không theo đúng mẫu đuôi nào (tự đặt tên khác) thì GIỮ NGUYÊN, không ép. */
+const KIND_SUFFIX: Record<QueryKind, string> = { kis: "-kis", qa: "-qa", trake: "-trake" };
+function swapKindSuffix(name: string, kind: QueryKind): string {
+  const stripped = name.replace(/-(kis|qa|trake)$/i, "");
+  return `${stripped}${KIND_SUFFIX[kind]}`;
+}
+
 function Row({ file, row, index }: { file: DraftFile; row: DraftRow; index: number }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: row.id });
@@ -194,7 +203,11 @@ export function SubmitPanel() {
         <div className="flex gap-1">
           <TextInput value={newName} onChange={(e) => setNewName(e.target.value)}
                      placeholder="query-p1-1-kis" className="flex-1 px-1.5 py-1 font-mono text-[11px]" />
-          <Select value={newKind} onChange={(e) => setNewKind(e.target.value as QueryKind)}
+          <Select value={newKind} onChange={(e) => {
+                    const k = e.target.value as QueryKind;
+                    setNewKind(k);
+                    setNewName((prev) => swapKindSuffix(prev, k));
+                  }}
                   className="w-[74px] px-1 py-1 text-[11px]">
             <option value="kis">KIS</option>
             <option value="qa">Q&amp;A</option>
@@ -232,7 +245,15 @@ export function SubmitPanel() {
                        title="Tên file lưu — trùng tên câu truy vấn BTC giao"
                        className="w-[140px] px-1.5 py-0.5 font-mono text-[11px]" />
             <Select value={file.kind}
-                    onChange={(e) => patchFile(file.name, { kind: e.target.value as QueryKind })}
+                    onChange={(e) => {
+                      const k = e.target.value as QueryKind;
+                      const newName = swapKindSuffix(file.name, k);
+                      patchFile(file.name, { kind: k });
+                      if (newName !== file.name) {
+                        const err = renameFile(file.name, newName);
+                        if (err) toast.error(`Đã đổi loại, nhưng đổi tên tự động thất bại (${err}) — tự sửa tên nếu cần`);
+                      }
+                    }}
                     className="w-[74px] px-1 py-0.5 text-[11px]">
               <option value="kis">KIS</option>
               <option value="qa">Q&amp;A</option>
@@ -253,14 +274,21 @@ export function SubmitPanel() {
                 : file.rows.length >= 90 ? "text-[var(--color-warn)]" : "text-[var(--color-fg-mute)]")}>
               {file.rows.length}/{MAX_ROWS} dòng
             </span>
-            <Button size="sm" variant="ghost" onClick={() => removeFile(file.name)}>
-              <Trash2 size={11} />
-            </Button>
           </div>
 
           <p className="text-[10px] leading-snug text-[var(--color-fg-mute)]">
             Thứ tự dòng có tính điểm — dòng trên cùng là đáp án bạn tin nhất. Kéo biểu tượng bên trái để đổi.
           </p>
+
+          {/* Hàng RIÊNG, vị trí CỐ ĐỊNH — trước gộp chung hàng với loại/số sự kiện
+              nên vị trí nút nhảy qua nhảy lại tuỳ có hiện ô "số sự kiện" hay
+              không, dễ bấm nhầm. */}
+          <div>
+            <Button size="sm" variant="ghost" onClick={() => removeFile(file.name)}
+                    className="border border-[var(--color-line)] text-[var(--color-err)] hover:border-[var(--color-err)] hover:bg-[color-mix(in_srgb,var(--color-err)_10%,transparent)]">
+              <Trash2 size={11} /> Xoá file "{file.name}"
+            </Button>
+          </div>
 
           <div className="overflow-x-auto">
             <table className="w-full">

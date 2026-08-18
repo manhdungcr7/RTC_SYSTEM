@@ -19,10 +19,12 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { api, thumbUrl } from "../api/client";
-import { Button, EmptyState, Label, Pop, Section, TextArea, TextInput, cx } from "../components/ui";
+import { Button, EmptyState, Label, Pop, ResizeHandle, Section, TextArea, TextInput, cx } from "../components/ui";
+import { Inspector } from "../features/inspector/Inspector";
 import { TemporalMixerStrip } from "../features/search/SignalMixer";
 import { VideoScopePanel } from "../features/search/ScopePanels";
 import type { VideoScopeValue } from "../features/search/ScopePanels";
+import { SubmitPanel } from "../features/submission/SubmitPanel";
 import { formatTimecode } from "../features/viewer/useFrameIndex";
 import { framesPerRow, useSubmission } from "../stores/submissionStore";
 import { useUi } from "../stores/uiStore";
@@ -77,6 +79,12 @@ export function TemporalPage() {
   const [feedback, setFeedback] = useState<Record<number, { positive: FrameRef[]; negative: FrameRef[] }>>({});
   const openDetail = useUi((s) => s.openDetail);
   const openWorkbench = useUi((s) => s.openWorkbench);
+  const detail = useUi((s) => s.detail);
+  const leftWidth = useUi((s) => s.leftWidth);
+  const rightOpen = useUi((s) => s.rightOpen);
+  const rightWidth = useUi((s) => s.rightWidth);
+  const setLeftWidth = useUi((s) => s.setLeftWidth);
+  const setRightWidth = useUi((s) => s.setRightWidth);
 
   const markFeedback = (eventIdx: number, ref: FrameRef, kind: "positive" | "negative") =>
     setFeedback((p) => {
@@ -191,7 +199,8 @@ export function TemporalPage() {
 
   return (
     <div className="flex min-h-0 flex-1">
-      <aside className="flex w-[368px] shrink-0 flex-col overflow-y-auto border-r border-[var(--color-line)] bg-[var(--color-panel)]">
+      <aside style={{ width: leftWidth }}
+             className="flex shrink-0 flex-col overflow-y-auto border-r border-[var(--color-line)] bg-[var(--color-panel)]">
         <div className="border-b border-[var(--color-line)] p-3">
           <Label>Bối cảnh chung (tuỳ chọn)</Label>
           <TextArea
@@ -404,6 +413,7 @@ export function TemporalPage() {
           </div>
         </Section>
       </aside>
+      <ResizeHandle side="left" width={leftWidth} onResize={setLeftWidth} />
 
       <main className="min-w-0 flex-1 overflow-y-auto">
         {search.isPending ? (
@@ -531,6 +541,18 @@ export function TemporalPage() {
           </div>
         )}
       </main>
+
+      {/* Cột phải: tra cứu — DÙNG CHUNG với Search (cùng Inspector, cùng bản
+          nháp nộp bài toàn cục) thay vì chỉ có ở Tìm khung hình như trước. */}
+      {rightOpen && (
+        <>
+        <ResizeHandle side="right" width={rightWidth} onResize={setRightWidth} />
+        <aside style={{ width: rightWidth }}
+               className="shrink-0 border-l border-[var(--color-line)] bg-[var(--color-panel)]">
+          <Inspector current={detail} submitPanel={<SubmitPanel />} />
+        </aside>
+        </>
+      )}
     </div>
   );
 }

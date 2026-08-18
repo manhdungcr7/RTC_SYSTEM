@@ -7,8 +7,10 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
-from api.deps import get_media_index
+from api.deps import get_media_index, get_meili
+from api.schemas.search import FrameContent, SearchHit
 from core.media_index import MediaIndex
+from core.repositories.meili_repo import MeiliRepo
 
 router = APIRouter(prefix="/media")
 
@@ -49,6 +51,40 @@ def filmstrip(video: str, around: int, window: int = 10,
               media_index: MediaIndex = Depends(get_media_index)):
     ns = media_index.nearby_ns(video, around, window)
     return {"video": video, "frames": [{"n": n, "thumb_url": f"/media/thumb/{video}/{n}"} for n in ns]}
+
+
+@router.get("/lookup/{video}", response_model=SearchHit)
+def lookup(video: str, frame_idx: int = 1,
+           media_index: MediaIndex = Depends(get_media_index),
+           meili: MeiliRepo = Depends(get_meili)) -> SearchHit:
+    """Tra tay 1 khung hình theo (video, frame_idx) — đòn bẩy thủ công "luôn còn
+    đường tay" (P5): biết chắc video + số frame (vd đọc được từ đề thi hoặc tự
+    tua ra) thì mở thẳng ra xem, không phải tìm bằng mô tả trước. Trả ĐÚNG
+    dạng SearchHit để dùng chung modal "Giải thích" với kết quả tìm kiếm bình
+    thường — kể cả xem được video tại đúng giây đó.
+
+    `frame_idx` là số 1-based đã tính theo quy ước BTC (xem core/media_index.py)
+    — mặc định 1 (khung đầu tiên) nếu không truyền, để chỉ cần gõ tên video là
+    tra được ngay, không bắt buộc phải biết số frame.
+
+    Keyframe thưa (không phải mọi frame_idx đều được lập chỉ mục) nên tra ra
+    KEYFRAME GẦN NHẤT với số đã nhập — không phải lúc nào cũng khớp tuyệt đối,
+    nhưng đây là khung DUY NHẤT có đủ caption/OCR/vật thể đã trích sẵn."""
+    rows = media_index.full_map(video)
+    if not rows:
+        raise HTTPException(404, f"không tìm thấy video {video}")
+    nearest = min(rows, key=lambda r: abs(r["frame_idx"] - frame_idx))
+
+    doc_id = f"{video}:{nearest['n']:06d}"
+    doc = meili.get_frame_docs([doc_id]).get(doc_id, {})
+    pts = nearest["pts_time"]
+    asr_window = meili.asr_segments_for_video(video, pts - 5, pts + 8, size=5)
+    content = FrameContent(caption=doc.get("caption"), ocr=doc.get("ocr"),
+                            objects=doc.get("objects"), asr_window=asr_window)
+
+    return SearchHit(id=doc_id, video=video, n=nearest["n"], frame_idx=nearest["frame_idx"],
+                      score=0.0, thumb_url=f"/media/thumb/{video}/{nearest['n']}",
+                      pts_time=pts, rank=0, content=content)
 
 
 @router.get("/frame_at/{video}")

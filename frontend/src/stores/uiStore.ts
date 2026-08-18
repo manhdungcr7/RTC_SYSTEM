@@ -11,6 +11,11 @@ export type ResultView = "grid" | "byVideo" | "compare";
 interface UiState {
   leftOpen: boolean;
   rightOpen: boolean;
+  /** Bề rộng 2 cột 2 bên (px) — kéo được bằng thanh chia, DÙNG CHUNG cho cả
+   *  Search lẫn Temporal (2 trang cùng bố cục 3 cột) nên đặt ở đây thay vì
+   *  từng trang tự nhớ riêng. */
+  leftWidth: number;
+  rightWidth: number;
   inspectorTab: InspectorTab;
 
   /** Nhánh đang xem riêng ("" = xem kết quả đã gộp). */
@@ -40,6 +45,8 @@ interface UiState {
 
   toggleLeft: () => void;
   toggleRight: () => void;
+  setLeftWidth: (n: number) => void;
+  setRightWidth: (n: number) => void;
   setInspectorTab: (t: InspectorTab) => void;
   setBranchTab: (b: string) => void;
   setResultView: (v: ResultView) => void;
@@ -58,6 +65,8 @@ interface UiState {
 export const useUi = create<UiState>((set) => ({
   leftOpen: true,
   rightOpen: true,
+  leftWidth: 336,
+  rightWidth: 366,
   inspectorTab: "explain",
   branchTab: "",
   resultView: "grid",
@@ -73,6 +82,8 @@ export const useUi = create<UiState>((set) => ({
 
   toggleLeft: () => set((s) => ({ leftOpen: !s.leftOpen })),
   toggleRight: () => set((s) => ({ rightOpen: !s.rightOpen })),
+  setLeftWidth: (n) => set({ leftWidth: Math.min(640, Math.max(260, n)) }),
+  setRightWidth: (n) => set({ rightWidth: Math.min(640, Math.max(260, n)) }),
   setInspectorTab: (t) => set({ inspectorTab: t }),
   setBranchTab: (b) => set({ branchTab: b }),
   setResultView: (v) => set({ resultView: v }),

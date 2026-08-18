@@ -5,7 +5,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import * as Popover from "@radix-ui/react-popover";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { ChevronDown, X } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 export const cx = (...parts: (string | false | null | undefined)[]) =>
@@ -51,8 +51,52 @@ export function TextInput({ className, ...p }: React.InputHTMLAttributes<HTMLInp
   return <input {...p} className={cx(inputBase, className)} />;
 }
 
+/** Kéo chỉnh chiều cao từ CẢ THANH NGANG phía dưới, không chỉ đúng 1 điểm góc
+ *  như tay cầm resize gốc của trình duyệt (`resize-y`) — góc quá nhỏ, dễ trượt
+ *  chuột ra ngoài không bấm trúng. Tắt hẳn `resize-y` gốc, tự vẽ 1 thanh kéo
+ *  rộng suốt bề ngang ngay dưới khung. */
 export function TextArea({ className, ...p }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...p} className={cx(inputBase, "resize-y leading-snug", className)} />;
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
+
+  const onPointerMove = useCallback((e: PointerEvent) => {
+    if (!dragRef.current || !taRef.current) return;
+    const dy = e.clientY - dragRef.current.startY;
+    taRef.current.style.height = `${Math.max(28, dragRef.current.startHeight + dy)}px`;
+  }, []);
+
+  const onPointerUp = useCallback(() => {
+    dragRef.current = null;
+    window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", onPointerUp);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  }, [onPointerMove]);
+
+  const onHandleDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    if (!taRef.current) return;
+    dragRef.current = { startY: e.clientY, startHeight: taRef.current.offsetHeight };
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    document.body.style.cursor = "ns-resize";
+    document.body.style.userSelect = "none";
+  }, [onPointerMove, onPointerUp]);
+
+  return (
+    <div className="relative">
+      <textarea ref={taRef} {...p}
+                className={cx(inputBase, "resize-none pb-2.5 leading-snug", className)} />
+      <div
+        onPointerDown={onHandleDown}
+        role="separator" aria-orientation="horizontal"
+        title="Kéo để đổi chiều cao"
+        className="absolute inset-x-0 bottom-0 flex h-2.5 cursor-ns-resize items-end justify-center"
+      >
+        <div className="mb-0.5 h-[3px] w-6 rounded-full bg-[var(--color-line-hi)]" />
+      </div>
+    </div>
+  );
 }
 
 /** Ô nhập SỐ dùng font mono — mọi con số trong hệ thống đều đẳng chiều. */
@@ -209,6 +253,53 @@ export function EmptyState({ title, hint, action }: {
       <div className="text-[13px] text-[var(--color-fg)]">{title}</div>
       {hint && <div className="max-w-md text-[12px] leading-relaxed text-[var(--color-fg-dim)]">{hint}</div>}
       {action}
+    </div>
+  );
+}
+
+/* ---------------- Thanh chia cột kéo được (Search/Temporal 3-cột) ---------------- */
+
+/** Thanh mảnh giữa 2 cột — kéo ngang để đổi bề rộng cột đứng cạnh nó.
+ *  `side`: cột đang kéo nằm ở phía nào của thanh — quyết định dấu delta X (cột
+ *  bên TRÁI thanh thì kéo sang phải mới TĂNG rộng; cột bên PHẢI thanh thì kéo
+ *  sang trái mới TĂNG rộng). */
+export function ResizeHandle({ side, width, onResize }: {
+  side: "left" | "right"; width: number; onResize: (n: number) => void;
+}) {
+  const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+
+  const onPointerMove = useCallback((e: PointerEvent) => {
+    if (!dragRef.current) return;
+    const dx = e.clientX - dragRef.current.startX;
+    const delta = side === "left" ? dx : -dx;
+    onResize(dragRef.current.startWidth + delta);
+  }, [side, onResize]);
+
+  const onPointerUp = useCallback(() => {
+    dragRef.current = null;
+    window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", onPointerUp);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  }, [onPointerMove]);
+
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    dragRef.current = { startX: e.clientX, startWidth: width };
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, [width, onPointerMove, onPointerUp]);
+
+  return (
+    <div
+      onPointerDown={onPointerDown}
+      role="separator" aria-orientation="vertical"
+      title="Kéo để đổi bề rộng cột"
+      className="group relative w-[3px] shrink-0 cursor-col-resize bg-[var(--color-line)] transition-colors hover:bg-[var(--color-focus)] active:bg-[var(--color-focus)]"
+    >
+      <div className="absolute inset-y-0 -left-1.5 -right-1.5" />
     </div>
   );
 }

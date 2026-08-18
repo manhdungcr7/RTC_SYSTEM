@@ -167,7 +167,7 @@ function ChannelStrip({ branchKey }: { branchKey: string }) {
 
 export function SignalMixer() {
   const patch = useSession((s) => s.patch);
-  const resetWeights = useSession((s) => s.resetWeights);
+  const resetToDefault = useSession((s) => s.resetToDefault);
 
   const enableAll = () => {
     const next: Record<string, boolean> = {};
@@ -179,8 +179,9 @@ export function SignalMixer() {
     <div className="flex flex-col gap-0.5">
       <div className="mb-1.5 flex items-center gap-1">
         <Button size="sm" variant="ghost" onClick={enableAll}>Bật hết</Button>
-        <Button size="sm" variant="ghost" onClick={resetWeights}>
-          Trọng số mặc định
+        <Button size="sm" variant="ghost" onClick={resetToDefault}
+                title="Trọng số về mặc định, tắt+xoá OCR/ASR, bỏ giới hạn Thu hẹp video">
+          Mặc định
         </Button>
       </div>
 

@@ -124,7 +124,7 @@ interface Store {
   renameSession: (id: string, label: string) => void;
   patch: (patch: Partial<SessionState>) => void;
   patchOf: (id: string, patch: Partial<SessionState>) => void;
-  resetWeights: () => void;
+  resetToDefault: () => void;
 
   togglePin: (f: Omit<PinnedFrame, "note">) => void;
   setPinNote: (id: string, note: string) => void;
@@ -187,13 +187,30 @@ export const useSession = create<Store>()(
         patchOf: (id, patch) =>
           set((s) => ({ sessions: { ...s.sessions, [id]: { ...s.sessions[id], ...patch } } })),
 
-        resetWeights: () =>
-          set((s) => ({
-            sessions: {
-              ...s.sessions,
-              [s.activeId]: { ...s.sessions[s.activeId], weights: { ...DEFAULT_WEIGHTS } },
-            },
-          })),
+        // "Mặc định" — không CHỈ đưa trọng số về số đã đo sẵn, mà đưa cả bàn
+        // trộn về đúng trạng thái BAN ĐẦU: OCR/ASR tắt hẳn + xoá chữ đã gõ
+        // (2 nhánh này vốn chỉ nên chạy khi người dùng CHỦ Ý gõ, để sót lại
+        // chữ cũ mà tưởng đã "mặc định" dễ gây nhầm), và bỏ giới hạn "Thu hẹp
+        // video" (về lại tìm trên TOÀN BỘ kho, không phải phạm vi lần trước).
+        resetToDefault: () =>
+          set((s) => {
+            const cur = s.sessions[s.activeId];
+            return {
+              sessions: {
+                ...s.sessions,
+                [s.activeId]: {
+                  ...cur,
+                  weights: { ...DEFAULT_WEIGHTS },
+                  enabled: { ...cur.enabled, ocr: false, asr: false },
+                  ocr: { query: "", mode: "score" },
+                  asr: { query: "", lexical: true, semantic: true, mode: "score",
+                         window_before: 3, window_after: 5 },
+                  scopeVideos: [],
+                  scopeInvert: false,
+                },
+              },
+            };
+          }),
 
         togglePin: (f) =>
           set((s) => {

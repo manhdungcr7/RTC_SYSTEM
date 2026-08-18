@@ -3,15 +3,68 @@
  *  Đèn trạng thái quan trọng hơn vẻ ngoài: khi encoder Kaggle chết giữa cuộc thi,
  *  người dùng phải thấy NGAY và biết chính xác cái gì còn dùng được — chứ không
  *  ngồi đoán vì sao tìm mãi không ra. */
-import { useQuery } from "@tanstack/react-query";
-import { Keyboard, Plug, Plus, X } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Keyboard, Plug, Plus, Search, X } from "lucide-react";
+import { useState } from "react";
 import { NavLink } from "react-router-dom";
+import { toast } from "sonner";
 
 import { api } from "../api/client";
-import { Button, StatusDot, cx } from "../components/ui";
+import { Button, Label, Pop, StatusDot, TextInput, cx } from "../components/ui";
 import { useSession } from "../stores/sessionStore";
 import { useSubmission } from "../stores/submissionStore";
 import { useUi } from "../stores/uiStore";
+
+/** Tra tay 1 khung hình theo video + frame_idx — không cần gõ mô tả rồi tìm,
+ *  dùng khi đã BIẾT CHẮC toạ độ (vd đọc từ đề, hoặc muốn xem lại nhanh 1 khung
+ *  đã ghi chú) — P5 "luôn còn 1 đường thủ công". Không nhập frame_idx thì mặc
+ *  định 1 (khung đầu tiên), chỉ tên video vẫn tra được ngay. */
+function FrameLookup() {
+  const [video, setVideo] = useState("");
+  const [frameIdx, setFrameIdx] = useState("");
+  const openDetail = useUi((s) => s.openDetail);
+
+  const lookup = useMutation({
+    mutationFn: () => api.lookupFrame(video.trim(), frameIdx.trim() ? Number(frameIdx) : 1),
+    onSuccess: (hit) => openDetail(hit, [hit]),
+    onError: (e: Error) => toast.error(e.message || "Không tra được khung hình này"),
+  });
+
+  return (
+    <Pop width={240} trigger={
+      <Button size="sm" variant="ghost" title="Tra tay 1 khung hình theo video + frame_idx">
+        <Search size={12} />
+      </Button>
+    }>
+      <Label className="mb-1.5">Tra tay khung hình</Label>
+      <div className="flex flex-col gap-1.5">
+        <div>
+          <span className="mb-0.5 block text-[10.5px] text-[var(--color-fg-mute)]">Tên video</span>
+          <TextInput value={video} onChange={(e) => setVideo(e.target.value.trim())}
+                     placeholder="L21_V001" className="font-mono text-[12px]"
+                     onKeyDown={(e) => e.key === "Enter" && video.trim() && lookup.mutate()} />
+        </div>
+        <div>
+          <span className="mb-0.5 block text-[10.5px] text-[var(--color-fg-mute)]">
+            Frame index (bỏ trống = 1)
+          </span>
+          <TextInput value={frameIdx} inputMode="numeric"
+                     onChange={(e) => setFrameIdx(e.target.value.replace(/\D/g, ""))}
+                     placeholder="1" className="font-mono text-[12px]"
+                     onKeyDown={(e) => e.key === "Enter" && video.trim() && lookup.mutate()} />
+        </div>
+        <Button size="sm" variant="primary" onClick={() => lookup.mutate()}
+                disabled={!video.trim() || lookup.isPending}>
+          <Search size={11} /> {lookup.isPending ? "Đang tra…" : "Xem"}
+        </Button>
+        <p className="text-[10px] leading-snug text-[var(--color-fg-mute)]">
+          Keyframe thưa nên tra ra khung GẦN NHẤT với số đã nhập, không phải
+          lúc nào cũng khớp tuyệt đối — vẫn xem được video/tua tới đúng giây.
+        </p>
+      </div>
+    </Pop>
+  );
+}
 
 function SessionTabs() {
   const order = useSession((s) => s.order);
@@ -110,6 +163,7 @@ export function Topbar() {
           </span>
         )}
         <HealthLights />
+        <FrameLookup />
         <Button size="sm" variant="ghost" onClick={() => setConnectionOpen(true)} title="Bảng Kết nối">
           <Plug size={12} />
         </Button>
