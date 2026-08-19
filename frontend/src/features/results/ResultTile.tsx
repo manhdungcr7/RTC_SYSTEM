@@ -60,23 +60,31 @@ interface Props {
   onGood: () => void;
   onBad: () => void;
   onCompare: () => void;
+  bulkMode?: boolean;
+  bulkChecked?: boolean;
+  bulkOrder?: number;   // 1-based thứ tự sẽ ghi ra dòng CSV, undefined = chưa chọn
+  onToggleBulk?: () => void;
 }
 
 export const ResultTile = memo(function ResultTile({
   hit, selected, pinned, good, bad, onOpen, onPin, onRef, onGood, onBad, onCompare,
+  bulkMode, bulkChecked, bulkOrder, onToggleBulk,
 }: Props) {
   return (
     <div
+      data-bulk-tile={bulkMode ? hit.id : undefined}
       className={cx(
         "group relative overflow-hidden rounded-[var(--radius-sm)] border bg-[var(--color-panel)] transition-colors",
-        selected
+        bulkChecked
           ? "border-[var(--color-focus)]"
-          : pinned
-            ? "border-[var(--color-pin)]"
-            : "border-[var(--color-line)] hover:border-[var(--color-line-hi)]",
+          : selected
+            ? "border-[var(--color-focus)]"
+            : pinned
+              ? "border-[var(--color-pin)]"
+              : "border-[var(--color-line)] hover:border-[var(--color-line-hi)]",
       )}
     >
-      <button type="button" onClick={onOpen} className="block w-full text-left"
+      <button type="button" onClick={bulkMode ? onToggleBulk : onOpen} className="block w-full text-left"
               aria-label={`Mở ${hit.video} khung ${hit.frame_idx}`}>
         <img
           src={hit.thumb_url} alt="" loading="lazy" decoding="async"
@@ -84,10 +92,23 @@ export const ResultTile = memo(function ResultTile({
         />
       </button>
 
+      {bulkMode && (
+        <label className="absolute left-1 top-1 flex h-5 w-5 items-center justify-center rounded-[2px] border bg-black/72"
+               style={bulkChecked ? { borderColor: "var(--color-focus)" } : { borderColor: "rgba(255,255,255,.3)" }}
+               onClick={(e) => e.stopPropagation()}>
+          <input type="checkbox" checked={!!bulkChecked} onChange={onToggleBulk} className="sr-only" />
+          <span className="font-mono text-[10px] font-semibold tabular-nums"
+                style={{ color: bulkChecked ? "var(--color-focus)" : "var(--color-fg-mute)" }}>
+            {bulkChecked ? bulkOrder : ""}
+          </span>
+        </label>
+      )}
       {/* Hạng — luôn thấy, không cần rê chuột */}
-      <span className="pointer-events-none absolute left-1 top-1 rounded-[2px] bg-black/72 px-1.5 py-[1px] font-mono text-[10px] font-semibold tabular-nums">
-        #{hit.rank}
-      </span>
+      {!bulkMode && (
+        <span className="pointer-events-none absolute left-1 top-1 rounded-[2px] bg-black/72 px-1.5 py-[1px] font-mono text-[10px] font-semibold tabular-nums">
+          #{hit.rank}
+        </span>
+      )}
 
       {(good || bad) && (
         <span

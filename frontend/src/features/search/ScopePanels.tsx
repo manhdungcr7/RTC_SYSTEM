@@ -225,7 +225,7 @@ export function VideoScopePanel({ value, onChange }: {
       {/* Bấm 1 phát ra ngay cả thể loại — đây là cách dùng NHANH NHẤT và phổ biến
           nhất của "Thu hẹp video", nên đặt lên đầu, làm to/rõ thay vì giấu trong
           1 dropdown nhỏ như trước (nhiều người dùng không biết nó tồn tại). */}
-      <div className="rounded-[var(--radius-sm)] border-2 border-[var(--color-focus)] bg-[color-mix(in_srgb,var(--color-focus)_8%,transparent)] p-2">
+      <div className="rounded-[var(--radius-sm)] border border-[var(--color-line)] p-2">
         <Label className="mb-1.5 text-[12px] font-semibold text-[var(--color-fg)]">
           📁 Thu hẹp nhanh theo thể loại
         </Label>

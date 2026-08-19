@@ -15,7 +15,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { api, frameAtUrl, frameUrl, thumbUrl, videoUrl } from "../../api/client";
-import { Button, cx } from "../../components/ui";
+import { Button, copyToClipboard, cx } from "../../components/ui";
 import { useSession } from "../../stores/sessionStore";
 import { useSubmission } from "../../stores/submissionStore";
 import { useUi } from "../../stores/uiStore";
@@ -30,6 +30,9 @@ type StripMode = "keyframe" | "1s" | "5s";
 export function DetailOverlay() {
   const hit = useUi((s) => s.detail);
   const hits = useUi((s) => s.detailHits);
+  const trake = useUi((s) => s.detailTrake);
+  const setTrakeActiveEvent = useUi((s) => s.setDetailTrakeActiveEvent);
+  const pickTrakeFrame = useUi((s) => s.pickDetailTrakeFrame);
   const openDetail = useUi((s) => s.openDetail);
   const openWorkbench = useUi((s) => s.openWorkbench);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -107,9 +110,10 @@ export function DetailOverlay() {
   if (!hit) return null;
 
   const activeFile = activeName ? files[activeName] : null;
-  const copyFrame = () => {
-    navigator.clipboard.writeText(String(reading.frameIdx));
-    toast.success(`Đã chép ${reading.frameIdx}`);
+  const copyFrame = async () => {
+    const ok = await copyToClipboard(String(reading.frameIdx));
+    if (ok) toast.success(`Đã chép ${reading.frameIdx}`);
+    else toast.error("Trình duyệt chặn chép tự động ở kết nối không an toàn (http qua IP) — tự bôi đen số rồi Ctrl+C.");
   };
   const addToDraft = () => {
     if (!activeFile) { toast.error("Chưa chọn file nộp bài — mở tab Nộp bài để tạo."); return; }
@@ -236,27 +240,56 @@ export function DetailOverlay() {
               </Button>
             </div>
 
-            <div className="mt-2 flex flex-col gap-1">
-              <Button size="sm" onClick={copyFrame}><Copy size={11} /> Chép frame_idx</Button>
-              <Button size="sm" variant="primary" onClick={addToDraft}>
-                <Plus size={11} /> Điền vào {activeFile ? `${activeFile.name}.csv` : "bản nháp"}
-              </Button>
-              <div className="flex gap-1">
-                <Button size="sm" variant="ghost" className="flex-1"
-                        onClick={() => togglePin({ id: hit.id, video: hit.video, n: hit.n,
-                                                   frame_idx: hit.frame_idx, pts_time: hit.pts_time })}>
-                  <Pin size={11} /> Ghim
+            {trake ? (
+              <div className="mt-2 flex flex-col gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-focus)] bg-[color-mix(in_srgb,var(--color-focus)_8%,transparent)] p-2">
+                <div className="text-[10.5px] leading-snug text-[var(--color-fg-dim)]">
+                  Tua tới đúng khung rồi bấm gán — chuyển sự kiện, tua tiếp, gán
+                  tiếp, KHÔNG cần thoát ra mở lại.
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {Array.from({ length: trake.nEvents }, (_, i) => (
+                    <button key={i} type="button" onClick={() => setTrakeActiveEvent(i)}
+                            className={cx("rounded-[2px] border px-1.5 py-0.5 font-mono text-[10.5px] tabular-nums",
+                              trake.activeEvent === i
+                                ? "border-[var(--color-focus)] bg-[color-mix(in_srgb,var(--color-focus)_18%,transparent)] text-[var(--color-focus)]"
+                                : trake.picks[i] != null
+                                  ? "border-[var(--color-ok)] text-[var(--color-ok)]"
+                                  : "border-[var(--color-line)] text-[var(--color-fg-mute)] hover:text-[var(--color-fg-dim)]")}>
+                      E{i + 1} {trake.picks[i] != null ? `· f${trake.picks[i]}` : "· chưa chọn"}
+                    </button>
+                  ))}
+                </div>
+                <Button size="sm" variant="primary" onClick={() => pickTrakeFrame(reading.frameIdx)}>
+                  <Plus size={11} /> Gán khung này (f{reading.frameIdx}) cho E{trake.activeEvent + 1}
                 </Button>
-                <Button size="sm" variant="ghost" className="flex-1"
-                        onClick={() => {
-                          patch({ refVideo: hit.video, refN: hit.n, refImageB64: null,
-                                  enabled: { ...session.enabled, dinov3: true } });
-                          toast.success("Đã đặt làm ảnh mẫu");
-                        }}>
-                  <Search size={11} /> Ảnh mẫu
+                <Button size="sm" variant="ghost" disabled={trake.picks.some((p) => p == null)}
+                        onClick={() => { trake.onSubmit(trake.picks as number[]); openDetail(null); }}>
+                  Nộp {trake.nEvents} khung vào bản nháp
                 </Button>
               </div>
-            </div>
+            ) : (
+              <div className="mt-2 flex flex-col gap-1">
+                <Button size="sm" onClick={copyFrame}><Copy size={11} /> Chép frame_idx</Button>
+                <Button size="sm" variant="primary" onClick={addToDraft}>
+                  <Plus size={11} /> Điền vào {activeFile ? `${activeFile.name}.csv` : "bản nháp"}
+                </Button>
+                <div className="flex gap-1">
+                  <Button size="sm" variant="ghost" className="flex-1"
+                          onClick={() => togglePin({ id: hit.id, video: hit.video, n: hit.n,
+                                                     frame_idx: hit.frame_idx, pts_time: hit.pts_time })}>
+                    <Pin size={11} /> Ghim
+                  </Button>
+                  <Button size="sm" variant="ghost" className="flex-1"
+                          onClick={() => {
+                            patch({ refVideo: hit.video, refN: hit.n, refImageB64: null,
+                                    enabled: { ...session.enabled, dinov3: true } });
+                            toast.success("Đã đặt làm ảnh mẫu");
+                          }}>
+                    <Search size={11} /> Ảnh mẫu
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col gap-2">

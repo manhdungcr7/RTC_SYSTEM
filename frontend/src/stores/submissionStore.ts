@@ -146,7 +146,20 @@ export const useSubmission = create<Store>()(
       addRow: (name, row) =>
         set((s) => {
           const f = s.files[name];
-          if (!f || f.rows.length >= MAX_ROWS) return s;
+          if (!f) return s;
+          // Có dữ liệu thật để điền (gọi từ "Đưa vào bản nháp"/copy-frame, không
+          // phải bấm tay "+ Thêm dòng") VÀ đang có sẵn dòng trống (thường là
+          // dòng đầu khi file vừa tạo) -> điền vào dòng trống đó thay vì luôn
+          // thêm dòng mới, tránh để lại dòng trống vô dụng mãi ở đầu file.
+          if (row) {
+            const emptyIdx = f.rows.findIndex(
+              (r) => !r.video.trim() && r.frames.every((x) => !x.trim()) && !r.answer.trim());
+            if (emptyIdx >= 0) {
+              const rows = f.rows.map((r, i) => (i === emptyIdx ? { ...r, ...row } : r));
+              return { files: { ...s.files, [name]: { ...f, rows } } };
+            }
+          }
+          if (f.rows.length >= MAX_ROWS) return s;
           const base = emptyRow(framesPerRow(f));
           return {
             files: { ...s.files, [name]: { ...f, rows: [...f.rows, { ...base, ...row, id: rid() }] } },

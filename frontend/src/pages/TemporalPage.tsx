@@ -13,13 +13,13 @@
  */
 import { useMutation } from "@tanstack/react-query";
 import {
-  Anchor, ArrowLeftRight, ChevronDown, Loader2, Lock, Plus, Search, ThumbsDown, ThumbsUp, Trash2, X,
+  Anchor, ChevronDown, Loader2, Lock, Plus, Search, ThumbsDown, ThumbsUp, Trash2, X,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { api, thumbUrl } from "../api/client";
-import { Button, EmptyState, Label, Pop, ResizeHandle, Section, TextArea, TextInput, cx } from "../components/ui";
+import { Button, EmptyState, Label, ResizeHandle, Section, TextArea, TextInput, cx } from "../components/ui";
 import { Inspector } from "../features/inspector/Inspector";
 import { TemporalMixerStrip } from "../features/search/SignalMixer";
 import { VideoScopePanel } from "../features/search/ScopePanels";
@@ -49,16 +49,17 @@ type WeightState = Record<string, { enabled: boolean; weight: number }>;
 // Nhánh THỊ GIÁC — trộn vào vector sự kiện trước khi so khớp.
 const VISUAL_BRANCHES = TEMPORAL_BRANCHES;
 // Nhánh CHỮ/LỜI — cộng điểm OCR/ASR (câu nhập riêng từng sự kiện ở trên) vào DP.
-// Mặc định BẬT vì OCR/ASR trước giờ vẫn luôn được thử ngầm — giờ chỉ lộ ra để
-// tự tắt/chỉnh khi thấy nó kéo lệch kết quả (xem api/routers/temporal.py).
+// Mặc định TẮT — cùng nguyên tắc với Tìm khung hình (xem DEFAULT_ENABLED ở
+// sessionStore.ts): chỉ nên chạy khi người dùng CHỦ Ý gõ chữ/lời riêng cho sự
+// kiện, không đoán hộ khi ô đó còn trống.
 const TEXT_BRANCHES = ["ocr", "asr"] as const;
 const initialWeights: WeightState = {
   metaclip2: { enabled: true, weight: 1.0 },
   pecore: { enabled: false, weight: DEFAULT_WEIGHTS.pecore },
   beit3: { enabled: false, weight: DEFAULT_WEIGHTS.beit3 },
   capemb: { enabled: false, weight: DEFAULT_WEIGHTS.capemb },
-  ocr: { enabled: true, weight: DEFAULT_WEIGHTS.ocr },
-  asr: { enabled: true, weight: DEFAULT_WEIGHTS.asr },
+  ocr: { enabled: false, weight: DEFAULT_WEIGHTS.ocr },
+  asr: { enabled: false, weight: DEFAULT_WEIGHTS.asr },
 };
 
 export function TemporalPage() {
@@ -195,6 +196,32 @@ export function TemporalPage() {
     while (frames.length < want) frames.push("");
     addRow(f.name, { video: c.video, frames });
     toast.success(`Đã thêm chuỗi ${c.video} vào ${f.name}.csv`);
+  };
+
+  // Mở khung xem chi tiết THẬT (video tua được, đồng hồ frame_idx) — giống hệt
+  // bấm vào 1 kết quả bình thường — CỘNG THÊM bộ chọn sự kiện: tua tới đâu,
+  // bấm gán tới đó, đổi tab sự kiện, tua tiếp, KHÔNG phải thoát ra mở lại cho
+  // từng sự kiện (thay cho "đổi khung"/"xem video chọn khung" cũ). Khởi động ở
+  // đúng sự kiện người dùng vừa bấm vào để sửa, khung gợi ý hiện tại làm điểm
+  // xuất phát cho video (mở đúng ngay tại đó).
+  const openTrakePicker = (ci: number, c: TemporalCandidate, startEvent: number) => {
+    const chosenHits = c.hits.map((h, k) => swaps[`${ci}-${k}`] ?? h);
+    const initialPicks = chosenHits.map((h) => h.frame_idx);
+    openDetail(chosenHits[startEvent], [chosenHits[startEvent]], {
+      nEvents: c.hits.length,
+      initialPicks,
+      activeEvent: startEvent,
+      onSubmit: (frames) => {
+        const f = activeName ? files[activeName] : null;
+        if (!f) { toast.error("Chưa chọn file nộp bài — mở tab Nộp bài ở trang Tìm khung hình."); return; }
+        if (f.kind !== "trake") { toast.error(`File ${f.name} không phải loại TRAKE.`); return; }
+        const want = framesPerRow(f);
+        const rowFrames = frames.map(String).slice(0, want);
+        while (rowFrames.length < want) rowFrames.push("");
+        addRow(f.name, { video: c.video, frames: rowFrames });
+        toast.success(`Đã thêm chuỗi ${c.video} vào ${f.name}.csv`);
+      },
+    });
   };
 
   return (
@@ -376,6 +403,10 @@ export function TemporalPage() {
             neo biên) giữ nguyên. metaclip2 luôn là nhánh chính; bật thêm nhánh
             phụ khi câu mô tả chi tiết mà thị giác thuần chưa phân biệt được.
           </p>
+          <Button size="sm" variant="ghost" className="mb-1.5" onClick={() => setWeights(initialWeights)}
+                  title="Trọng số về mặc định (metaclip2 bật, các nhánh phụ tắt, ocr/asr bật)">
+            Mặc định
+          </Button>
           <div className="flex flex-col gap-0.5">
             {VISUAL_BRANCHES.map((b) => (
               <TemporalMixerStrip key={b} branchKey={b}
@@ -395,7 +426,7 @@ export function TemporalPage() {
           </div>
         </Section>
 
-        <Section title="Thu hẹp video">
+        <Section title="Thu hẹp video" defaultOpen={false}>
           <VideoScopePanel value={scope} onChange={setScope} />
         </Section>
 
@@ -433,9 +464,6 @@ export function TemporalPage() {
           <div className="flex flex-col gap-2 p-3">
             {search.data.candidates.map((c, i) => {
               const weakest = Math.min(...c.hits.map((h) => h.score));
-              // Danh sách cho ←/→ khi mở khung chi tiết — toàn bộ khung của
-              // CHUỖI này theo đúng thứ tự E1..En (đã tính khung đã đổi tay).
-              const navList = c.hits.map((h, k) => swaps[`${i}-${k}`] ?? h);
               return (
                 <div key={`${c.video}-${i}`}
                      className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-panel)] p-2">
@@ -456,7 +484,6 @@ export function TemporalPage() {
                     {c.hits.map((h, k) => {
                       const weak = h.score <= weakest + 1e-9 && c.hits.length > 1;
                       const chosen = swaps[`${i}-${k}`] ?? h;
-                      const alts = h.alternates ?? [];
                       const origIdx = filledIdxs[k];
                       const fb = origIdx != null ? feedback[origIdx] : undefined;
                       const isPos = fb?.positive.some((r) => r.video === chosen.video && r.n === chosen.n);
@@ -464,7 +491,8 @@ export function TemporalPage() {
                       return (
                         <div key={k} className="shrink-0">
                           <div className="relative">
-                            <button type="button" onClick={() => openDetail(chosen, navList)}
+                            <button type="button" onClick={() => openTrakePicker(i, c, k)}
+                                    title="Xem trọn video, tự chọn/tinh chỉnh khung cho sự kiện này rồi nộp"
                                     className={cx("block rounded-[var(--radius-sm)] border transition-colors",
                                       weak ? "border-[var(--color-warn)]"
                                            : "border-[var(--color-line)] hover:border-[var(--color-focus)]")}>
@@ -490,7 +518,7 @@ export function TemporalPage() {
                               </button>
                             </div>
                           </div>
-                          <button type="button" onClick={() => openDetail(chosen, navList)}
+                          <button type="button" onClick={() => openTrakePicker(i, c, k)}
                                   className="block w-full text-left">
                             <div className="px-1 py-0.5 text-left">
                               <div className="font-mono text-[9.5px] text-[var(--color-focus)]">E{k + 1}</div>
@@ -503,34 +531,6 @@ export function TemporalPage() {
                               </div>
                             </div>
                           </button>
-                          {alts.length > 0 && (
-                            <Pop width={230} trigger={
-                              <button type="button"
-                                      className="mt-0.5 w-full rounded-[2px] border border-[var(--color-line)] py-0.5 text-[9.5px] text-[var(--color-fg-mute)] hover:text-[var(--color-fg-dim)]">
-                                <ArrowLeftRight size={9} className="inline" /> đổi khung ({alts.length})
-                              </button>
-                            }>
-                              <div className="mb-1 text-[10.5px] text-[var(--color-fg-dim)]">
-                                Khung thay thế cho E{k + 1} — vẫn giữ đúng thứ tự thời gian
-                              </div>
-                              <div className="grid grid-cols-2 gap-1">
-                                {[h, ...alts].map((alt) => (
-                                  <button key={alt.id} type="button"
-                                          onClick={() => setSwaps((p) => ({ ...p, [`${i}-${k}`]: alt }))}
-                                          className={cx("rounded-[2px] border",
-                                            chosen.id === alt.id
-                                              ? "border-[var(--color-focus)]"
-                                              : "border-[var(--color-line)] hover:border-[var(--color-line-hi)]")}>
-                                    <img src={thumbUrl(alt.video, alt.n)} alt="" loading="lazy"
-                                         className="h-[48px] w-full bg-black object-cover" />
-                                    <div className="font-mono text-[9px] tabular-nums text-[var(--color-fg-mute)]">
-                                      f{alt.frame_idx} · {alt.score.toFixed(2)}
-                                    </div>
-                                  </button>
-                                ))}
-                              </div>
-                            </Pop>
-                          )}
                         </div>
                       );
                     })}

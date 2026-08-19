@@ -4,10 +4,12 @@ import { Toaster } from "sonner";
 
 import { ConnectionDialog, ShortcutsDialog } from "./app/Dialogs";
 import { Topbar } from "./app/Topbar";
+import { CsvPreviewModal } from "./features/submission/CsvPreviewModal";
 import { DetailOverlay } from "./features/viewer/DetailOverlay";
 import { WorkbenchOverlay } from "./features/workbench/WorkbenchOverlay";
 import { SearchPage } from "./pages/SearchPage";
 import { TemporalPage } from "./pages/TemporalPage";
+import { useUi } from "./stores/uiStore";
 
 // staleTime dài: trong lúc thi, cùng một truy vấn được xem đi xem lại nhiều lần
 // — không có lý do gọi lại máy chủ. retry=0 vì lỗi ở đây thường là encoder chết,
@@ -39,6 +41,8 @@ function Pages() {
 }
 
 export function App() {
+  const csvPreviewOpen = useUi((s) => s.csvPreviewOpen);
+  const setCsvPreviewOpen = useUi((s) => s.setCsvPreviewOpen);
   return (
     <QueryClientProvider client={qc}>
       <div className="flex h-full flex-col">
@@ -49,6 +53,7 @@ export function App() {
       <WorkbenchOverlay />
       <ConnectionDialog />
       <ShortcutsDialog />
+      <CsvPreviewModal open={csvPreviewOpen} onOpenChange={setCsvPreviewOpen} />
       <Toaster theme="dark" position="bottom-center" richColors closeButton
                toastOptions={{ style: { fontSize: "12px" } }} />
     </QueryClientProvider>

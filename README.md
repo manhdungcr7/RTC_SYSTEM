@@ -337,6 +337,28 @@ soi kỹ), gộp các khung quá gần nhau về thời gian, và tổng số k�
 - Phím tắt khi đang xem kết quả: mũi tên di chuyển, `p` ghim, `a`/`d` đánh dấu
   đúng/sai (phản hồi để tìm lại), `r` dùng làm ảnh tham chiếu, `s` thêm vào
   file nộp bài đang soạn, `w` mở workbench cả video, `c` so sánh.
+- **Chọn hàng loạt** (nút ở góc thanh công cụ lưới kết quả, chỉ hiện ở chế độ
+  Lưới): khi không chắc đáp án chính xác là khung nào, tick từng ô (thứ tự ghi
+  ra dòng CSV = thứ tự bấm) hoặc **kéo bôi đen** 1 vùng (thứ tự = thứ tự hệ
+  thống đã xếp hạng, không phải thứ tự chuột quét) để chọn nhiều khung cùng
+  lúc. Thanh nổi phía dưới hiện số đã chọn + nút **"Thêm vào bản nháp"** (mỗi
+  khung 1 dòng — chỉ dùng cho KIS/QA, TRAKE cần ghép nhiều khung/dòng nên dùng
+  cơ chế riêng ở mục 8.3) — không tự thêm ngầm, phải bấm mới ghi vào file.
+
+### Đòn bẩy thủ công khác (thanh trên cùng)
+
+- **🔍 Tra khung** — biết chắc `video + frame_idx` (đọc được từ đề, hoặc nhớ
+  lại 1 khung đã ghi chú) thì gõ thẳng vào đây, mở luôn modal "Giải thích" như
+  bấm vào 1 kết quả tìm kiếm — không cần gõ mô tả rồi tìm lại. Bỏ trống
+  frame_idx = mặc định khung đầu tiên. Keyframe thưa nên tra ra khung GẦN NHẤT
+  với số đã gõ, không phải lúc nào cũng khớp tuyệt đối.
+- **Xem CSV** — gửi lại 1 file `.csv` sắp nộp (chọn đúng loại KIS/QA/TRAKE)
+  vào đây để soát bằng mắt TRƯỚC khi nộp thật: mỗi dòng hiện ra thành ảnh theo
+  đúng thứ tự trong file, bấm vào 1 khung mở được video y hệt kết quả tìm kiếm
+  bình thường. Dùng cùng cơ chế tra khung gần nhất như trên.
+- **Bảng Kết nối** — xem/đổi nhanh URL+key encoder Kaggle và trạng thái các
+  dịch vụ (đèn GPU/Chữ ở góc trên cũng chỉ thẳng vào đây).
+- **Phím tắt (`?`)** — bảng đầy đủ mọi phím tắt trong hệ thống.
 
 ### 8.3. Trang Temporal (TRAKE — chuỗi sự kiện theo thứ tự thời gian)
 
@@ -355,13 +377,15 @@ soi kỹ), gộp các khung quá gần nhau về thời gian, và tổng số k�
   đã TỰ TÌM RA chắc chắn 1 sự kiện — DP sẽ ép đi qua đúng khung đó, không gian
   tìm các sự kiện còn lại co lại đáng kể (đòn bẩy mạnh nhất cho chuỗi dài).
 - **Bàn trộn tín hiệu** — giống hệt Search về giao diện, CHỈ đổi cách CHẤM
-  ĐIỂM từng khung hình, KHÔNG đụng thuật toán DP/boundary-anchor phía sau:
-  - Nhánh thị giác phụ (pecore/beit3/capemb): tắt mặc định, bật khi câu mô tả
-    chi tiết mà metaclip2 thuần chưa phân biệt được.
-  - Nhánh **ocr**/**asr**: bật mặc định (khớp với câu chữ/lời đã nhập ở trên,
-    trọng số mặc định 0.25/0.15) — tự tắt hoặc chỉnh nếu thấy nó kéo lệch kết
-    quả sang video sai (đây là trọng số DÙNG CHUNG cho mọi sự kiện, không phải
-    riêng từng sự kiện — câu chữ/lời đã nhập riêng theo sự kiện ở trên rồi).
+  ĐIỂM từng khung hình, KHÔNG đụng thuật toán DP/boundary-anchor phía sau. Nút
+  **"Mặc định"** đưa cả bàn trộn về đúng điểm xuất phát dưới đây:
+  - Nhánh thị giác phụ (pecore/beit3/capemb): **tắt mặc định**, bật khi câu mô
+    tả chi tiết mà metaclip2 thuần chưa phân biệt được.
+  - Nhánh **ocr**/**asr**: **tắt mặc định** — cùng nguyên tắc "không đoán hộ"
+    như Search, chỉ nên chạy khi bạn chủ ý gõ chữ/lời riêng cho sự kiện ở phần
+    "Chữ/lời riêng"; bật lên (trọng số mặc định 0.25/0.15) rồi tự chỉnh nếu
+    thấy nó kéo lệch kết quả sang video sai (đây là trọng số DÙNG CHUNG cho
+    mọi sự kiện, không phải riêng từng sự kiện).
   - Sự kiện DÀI/nhiều chi tiết cũng được tự tách mệnh đề như Search (mỗi mệnh
     đề encode riêng rồi gộp max+mean) — sự kiện ngắn 1 vế thì không đổi gì.
 - **Không còn phạt khoảng cách thời gian** giữa các sự kiện (đã bỏ hẳn theo
@@ -371,28 +395,39 @@ soi kỹ), gộp các khung quá gần nhau về thời gian, và tổng số k�
 - **Thu hẹp video**: y hệt Search, thu hẹp trước khi dò chuỗi.
 - **Nâng cao**: chỉnh số video ứng viên/neo (per_event) — tăng nếu nghi ngờ
   video đúng bị lọt khỏi tập ứng viên ban đầu.
-- Kết quả: mỗi ứng viên là 1 video + đúng số khung hình theo thứ tự E1..En,
-  có nút **"đổi khung"** xem khung thay thế cho từng vị trí (không phải chạy
-  lại cả chuỗi), click từng khung mở modal "Giải thích" đầy đủ như Search.
+- Kết quả: mỗi ứng viên là 1 video + đúng số khung hình theo thứ tự E1..En.
+  Nút **"Đưa vào bản nháp"** ở đầu mỗi ứng viên nộp thẳng đúng chuỗi hệ thống
+  gợi ý. Muốn tự tinh chỉnh từng sự kiện: bấm vào BẤT KỲ khung nào trong chuỗi
+  đó — mở đúng modal "Giải thích" (video thật, tua được, đồng hồ frame_idx)
+  NHƯNG có thêm bộ chọn sự kiện E1..En bên cạnh: tua tới đúng khung, bấm "Gán
+  khung này cho E{k}", đổi tab sang sự kiện khác, tua tiếp trên CÙNG video
+  đang mở (không phải thoát ra mở lại từng sự kiện) — đủ N sự kiện thì bấm
+  "Nộp N khung vào bản nháp" để ghi thành 1 dòng.
 
 ### 8.4. Tab "Nộp bài" (cột phải, dùng chung Search + Temporal)
 
 - **Tạo file kết quả**: đặt tên TRÙNG tên câu truy vấn BTC giao (vd
-  `query-p1-1-kis`, không kèm `.csv`), chọn loại KIS/QA/TRAKE.
+  `query-p1-1-kis`, không kèm `.csv`), chọn loại KIS/QA/TRAKE ở dropdown ngay
+  cạnh — loại chỉ chọn LÚC TẠO, đổi ý thì xoá tạo lại (chỗ chi tiết file bên
+  dưới chỉ hiện nhãn loại, không có dropdown thứ 2 để tránh 2 chỗ chọn trùng
+  nhau gây nhầm).
 - **Đổi tên file đã tạo**: ô tên ngay đầu bảng của file đang mở — sửa xong bấm
   ra ngoài hoặc Enter để lưu (báo lỗi nếu trùng tên file khác).
 - TRAKE: ô **"số sự kiện"** chỉnh được số cột frame (E1..En) — gõ số rồi bấm
   ra ngoài/Enter để áp dụng.
-- Thêm frame bằng phím `s` khi đang xem kết quả ở Search/Temporal, hoặc nút
-  "Đưa vào bản nháp" ở mỗi chuỗi TRAKE. Kéo thả để đổi thứ tự dòng (CÓ Ý
+- Thêm frame bằng phím `s` khi đang xem kết quả ở Search/Temporal, nút "Điền
+  vào ...csv" ở modal "Giải thích", **Chọn hàng loạt** ở lưới kết quả (mục
+  8.2), hoặc bộ chọn sự kiện TRAKE (mục 8.3). Nếu file đang có sẵn 1 dòng
+  trống (thường là dòng đầu lúc mới tạo file), các cách trên tự điền vào dòng
+  trống đó trước thay vì luôn thêm dòng mới. Kéo thả để đổi thứ tự dòng (CÓ Ý
   NGHĨA — dòng trên cùng là đáp án tin nhất).
 - Tự báo lỗi/cảnh báo tại chỗ: thiếu cột, sai số dòng TRAKE, answer quá 100
   ký tự, trùng dòng, 2 dòng cùng video cách nhau <10 khung (nghi cùng cảnh).
 - **Xem trước CSV** (nút "Cập nhật") — đúng thứ SẼ NỘP, kể cả quy tắc bọc
-  ngoặc kép, do backend dựng (không phải preview giả ở frontend).
-- Tải riêng từng file `.csv`, hoặc **"Đóng gói ZIP"** toàn bộ file đang có
-  thành đúng cấu trúc nộp Codabench. Ô đếm "Đã nộp lên Codabench: x/3" tự bấm
-  +1 sau mỗi lần nộp thật (tối đa 3 lần/gói theo luật BTC).
+  ngoặc kép, do backend dựng (không phải preview giả ở frontend). Muốn soát
+  bằng ẢNH (không chỉ chữ thô) thì dùng nút **Xem CSV** ở thanh trên cùng —
+  xem mục "Đòn bẩy thủ công khác" ở 8.2.
+- Tải riêng từng file `.csv` bằng nút "Tải ...csv".
 
 ---
 
@@ -412,8 +447,12 @@ không cần đúng thứ tự).
 
 Tuỳ đại lượng:
 - **`frame_idx`** (số NỘP CHO BTC, cũng là số hiển thị trên UI, vd "f123") —
-  **0-indexed**: khung đầu tiên của video gốc là `frame_idx = 0` (trích bằng
-  `decord.VideoReader`, cùng quy ước 0-based với OpenCV — khớp đúng cách BTC
-  đánh số, xem `indexing/kaggle/01_extract_keyframes.py`).
+  **1-indexed**: khung đầu tiên của video gốc là `frame_idx = 1` — BTC xác
+  nhận trực tiếp quy ước này (khớp Media Player Classic/kiểu đếm khung thông
+  dụng). CSV thô của pipeline trích bằng `decord.VideoReader` (0-based, giống
+  OpenCV) nên được **cộng +1 ngay tại nguồn đọc duy nhất**
+  (`core/media_index.py`, `core/repositories/faiss_repo.py`) — mọi nơi khác
+  trong hệ thống (API trả về, đồng hồ frame_idx lúc tua video, file nộp bài)
+  đều thấy số đã +1 sẵn, không cần tự cộng lại.
 - **`n`** (chỉ số keyframe NỘI BỘ, dùng đặt tên file `.webp`) — **1-indexed**:
   keyframe đầu tiên là `n=1`, file `000001.webp`.

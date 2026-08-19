@@ -5,11 +5,40 @@ import * as Dialog from "@radix-ui/react-dialog";
 import * as Popover from "@radix-ui/react-popover";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { ChevronDown, X } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { forwardRef, useCallback, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 export const cx = (...parts: (string | false | null | undefined)[]) =>
   parts.filter(Boolean).join(" ");
+
+/** `navigator.clipboard` chỉ tồn tại ở "secure context" (HTTPS hoặc chính
+ *  localhost) — máy đồng đội vào qua IP Tailscale thô (http://100.x.x.x) KHÔNG
+ *  phải secure context, nên `navigator.clipboard` là `undefined` và gọi
+ *  `.writeText` ném lỗi NGAY LẬP TỨC, dừng luôn trước khi kịp báo toast — bấm
+ *  "chép" mà không thấy gì là vì vậy. Dự phòng bằng `execCommand("copy")` kiểu
+ *  cũ (vẫn chạy được trên context không an toàn) khi Clipboard API không có. */
+export async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    if (window.isSecureContext && navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch { /* rơi xuống cách dự phòng */ }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
 
 /* ---------------- Khối gập được (dùng cho mọi panel ở rail trái) ---------------- */
 
@@ -43,12 +72,22 @@ export function Section({ title, children, defaultOpen = true, right, dense }: {
 /* ---------------- Nhập liệu ---------------- */
 
 const inputBase =
-  "w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-panel-2)] " +
+  "rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-panel-2)] " +
   "px-2 py-1.5 text-[13px] text-[var(--color-fg)] placeholder:text-[var(--color-fg-mute)] " +
   "focus:border-[var(--color-focus)] focus:outline-none";
 
+// "w-full" mặc định CHỈ thêm khi caller KHÔNG tự truyền lớp bề rộng riêng (vd
+// "w-[74px]"). Tailwind sinh CSS theo thứ tự nó gặp lớp trong mã nguồn, không
+// theo thứ tự trong chuỗi className — nên trước đây "w-full" của inputBase có
+// thể ĐÈ LÊN "w-[74px]" tự truyền vào (thắng hay thua tuỳ may rủi thứ tự biên
+// dịch), khiến 1 dropdown lẽ ra hẹp lại nuốt hết chỗ của ô cạnh bên. Bỏ hẳn
+// "w-full" ra khỏi hằng số dùng chung, chỉ thêm lại khi thật sự cần, để không
+// bao giờ có 2 lớp "w-*" cùng lúc tranh nhau nữa.
+const hasWidthClass = (className?: string) => /(^|\s)(w-|min-w-|max-w-)\S/.test(className ?? "");
+const fillWidth = (className?: string) => (hasWidthClass(className) ? "" : "w-full");
+
 export function TextInput({ className, ...p }: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...p} className={cx(inputBase, className)} />;
+  return <input {...p} className={cx(inputBase, fillWidth(className), className)} />;
 }
 
 /** Kéo chỉnh chiều cao từ CẢ THANH NGANG phía dưới, không chỉ đúng 1 điểm góc
@@ -83,10 +122,20 @@ export function TextArea({ className, ...p }: React.TextareaHTMLAttributes<HTMLT
     document.body.style.userSelect = "none";
   }, [onPointerMove, onPointerUp]);
 
+  // Chỉ đưa các lớp LIỆU-BỐ-CỤC (flex/width) lên div bọc ngoài — đây mới là
+  // flex-item thật trong hàng cha (vd hàng sự kiện ở TemporalPage), còn
+  // <textarea> chỉ là con của nó nên trước đây "flex-1" đặt sai chỗ, khiến ô
+  // không co giãn theo khi kéo thanh chia cột. Các lớp khác (đệm, cỡ chữ…)
+  // vẫn giữ nguyên trên <textarea> như cũ, không đẩy lên div để tránh đệm/margin bị áp 2 lần.
+  const layoutClasses = (className ?? "")
+    .split(/\s+/)
+    .filter((c) => /^(flex-|w-|min-w-|max-w-|shrink|grow|basis-)/.test(c))
+    .join(" ");
+
   return (
-    <div className="relative">
+    <div className={cx("relative", layoutClasses)}>
       <textarea ref={taRef} {...p}
-                className={cx(inputBase, "resize-none pb-2.5 leading-snug", className)} />
+                className={cx(inputBase, "block w-full resize-none pb-2.5 leading-snug", className)} />
       <div
         onPointerDown={onHandleDown}
         role="separator" aria-orientation="horizontal"
@@ -101,12 +150,13 @@ export function TextArea({ className, ...p }: React.TextareaHTMLAttributes<HTMLT
 
 /** Ô nhập SỐ dùng font mono — mọi con số trong hệ thống đều đẳng chiều. */
 export function NumInput({ className, ...p }: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...p} inputMode="decimal" className={cx(inputBase, "font-mono", className)} />;
+  return <input {...p} inputMode="decimal"
+                className={cx(inputBase, fillWidth(className), "font-mono", className)} />;
 }
 
 export function Select({ className, children, ...p }: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select {...p} className={cx(inputBase, "cursor-pointer", className)}>
+    <select {...p} className={cx(inputBase, fillWidth(className), "cursor-pointer", className)}>
       {children}
     </select>
   );
@@ -116,27 +166,29 @@ export function Select({ className, children, ...p }: React.SelectHTMLAttributes
 
 type BtnVariant = "default" | "primary" | "ghost" | "danger";
 
-export function Button({ variant = "default", className, size = "md", ...p }:
-  React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: BtnVariant; size?: "sm" | "md" }) {
-  const base =
-    "inline-flex items-center justify-center gap-1.5 rounded-[var(--radius-sm)] border font-medium " +
-    "transition-colors disabled:cursor-not-allowed disabled:opacity-40 whitespace-nowrap";
-  const sizes = { sm: "px-2 py-1 text-[11px]", md: "px-2.5 py-1.5 text-[12px]" };
-  const variants: Record<BtnVariant, string> = {
-    default:
-      "border-[var(--color-line)] bg-[var(--color-panel-2)] text-[var(--color-fg)] " +
-      "hover:border-[var(--color-line-hi)] hover:bg-[var(--color-panel-3)]",
-    primary:
-      "border-[var(--color-focus)] bg-[var(--color-focus)] text-[#0B1220] hover:brightness-110",
-    ghost:
-      "border-transparent bg-transparent text-[var(--color-fg-dim)] hover:text-[var(--color-fg)] " +
-      "hover:bg-[var(--color-panel-2)]",
-    danger:
-      "border-[var(--color-line)] bg-transparent text-[var(--color-err)] " +
-      "hover:border-[var(--color-err)] hover:bg-[color-mix(in_srgb,var(--color-err)_12%,transparent)]",
-  };
-  return <button {...p} className={cx(base, sizes[size], variants[variant], className)} />;
-}
+export const Button = forwardRef<HTMLButtonElement,
+  React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: BtnVariant; size?: "sm" | "md" }>(
+  function Button({ variant = "default", className, size = "md", ...p }, ref) {
+    const base =
+      "inline-flex items-center justify-center gap-1.5 rounded-[var(--radius-sm)] border font-medium " +
+      "transition-colors disabled:cursor-not-allowed disabled:opacity-40 whitespace-nowrap";
+    const sizes = { sm: "px-2 py-1 text-[11px]", md: "px-2.5 py-1.5 text-[12px]" };
+    const variants: Record<BtnVariant, string> = {
+      default:
+        "border-[var(--color-line)] bg-[var(--color-panel-2)] text-[var(--color-fg)] " +
+        "hover:border-[var(--color-line-hi)] hover:bg-[var(--color-panel-3)]",
+      primary:
+        "border-[var(--color-focus)] bg-[var(--color-focus)] text-[#0B1220] hover:brightness-110",
+      ghost:
+        "border-transparent bg-transparent text-[var(--color-fg-dim)] hover:text-[var(--color-fg)] " +
+        "hover:bg-[var(--color-panel-2)]",
+      danger:
+        "border-[var(--color-line)] bg-transparent text-[var(--color-err)] " +
+        "hover:border-[var(--color-err)] hover:bg-[color-mix(in_srgb,var(--color-err)_12%,transparent)]",
+    };
+    return <button ref={ref} {...p} className={cx(base, sizes[size], variants[variant], className)} />;
+  },
+);
 
 /* ---------------- Nhãn / chip ---------------- */
 

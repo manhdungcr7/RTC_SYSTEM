@@ -16,7 +16,7 @@ import type { DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useMutation } from "@tanstack/react-query";
-import { AlertTriangle, Check, Copy, Download, FileDown, GripVertical, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, Copy, FileDown, GripVertical, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -118,7 +118,6 @@ export function SubmitPanel() {
   const patchFile = useSubmission((s) => s.patchFile);
   const addRow = useSubmission((s) => s.addRow);
   const reorderRows = useSubmission((s) => s.reorderRows);
-  const bumpSubmit = useSubmission((s) => s.bumpSubmitCount);
 
   const [newName, setNewName] = useState("query-p1-1-kis");
   const [newKind, setNewKind] = useState<QueryKind>("kis");
@@ -171,22 +170,6 @@ export function SubmitPanel() {
     toast.success(`Đã tải ${f.name}.csv`);
   };
 
-  const downloadZip = async () => {
-    const out: Record<string, string> = {};
-    for (const n of order) {
-      const f = files[n];
-      const r = await api.submitPreview(f.kind, toBackendRows(f), f.kind === "trake" ? f.nEvents : null);
-      out[`${f.name}.csv`] = r.csv_text;
-    }
-    const blob = await api.submitPack(out);
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "submission.zip";
-    a.click();
-    URL.revokeObjectURL(a.href);
-    toast.success(`Đã đóng gói ${order.length} file`);
-  };
-
   const onDragEnd = (e: DragEndEvent) => {
     if (!file) return;
     const { active, over } = e;
@@ -202,18 +185,20 @@ export function SubmitPanel() {
         <Label className="mb-0">Tạo file kết quả</Label>
         <div className="flex gap-1">
           <TextInput value={newName} onChange={(e) => setNewName(e.target.value)}
-                     placeholder="query-p1-1-kis" className="flex-1 px-1.5 py-1 font-mono text-[11px]" />
+                     placeholder="query-p1-1-kis"
+                     className="flex-1 px-1.5 py-1 font-mono text-[11px]" />
           <Select value={newKind} onChange={(e) => {
                     const k = e.target.value as QueryKind;
                     setNewKind(k);
                     setNewName((prev) => swapKindSuffix(prev, k));
                   }}
-                  className="w-[74px] px-1 py-1 text-[11px]">
+                  className="w-[74px] shrink-0 px-1 py-1 text-[11px]">
             <option value="kis">KIS</option>
             <option value="qa">Q&amp;A</option>
             <option value="trake">TRAKE</option>
           </Select>
-          <Button size="sm" onClick={() => newName.trim() && createFile(newName.trim(), newKind)}>
+          <Button size="sm" className="shrink-0"
+                  onClick={() => newName.trim() && createFile(newName.trim(), newKind)}>
             <Plus size={11} />
           </Button>
         </div>
@@ -244,21 +229,6 @@ export function SubmitPanel() {
                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
                        title="Tên file lưu — trùng tên câu truy vấn BTC giao"
                        className="w-[140px] px-1.5 py-0.5 font-mono text-[11px]" />
-            <Select value={file.kind}
-                    onChange={(e) => {
-                      const k = e.target.value as QueryKind;
-                      const newName = swapKindSuffix(file.name, k);
-                      patchFile(file.name, { kind: k });
-                      if (newName !== file.name) {
-                        const err = renameFile(file.name, newName);
-                        if (err) toast.error(`Đã đổi loại, nhưng đổi tên tự động thất bại (${err}) — tự sửa tên nếu cần`);
-                      }
-                    }}
-                    className="w-[74px] px-1 py-0.5 text-[11px]">
-              <option value="kis">KIS</option>
-              <option value="qa">Q&amp;A</option>
-              <option value="trake">TRAKE</option>
-            </Select>
             {file.kind === "trake" && (
               <label className="flex items-center gap-1 text-[10.5px] text-[var(--color-fg-dim)]">
                 số sự kiện
@@ -358,24 +328,9 @@ export function SubmitPanel() {
             </pre>
           </div>
 
-          <div className="flex flex-wrap gap-1">
-            <Button size="sm" onClick={() => downloadOne(file)} disabled={check.errors.length > 0}>
-              <FileDown size={11} /> Tải {file.name}.csv
-            </Button>
-            <Button size="sm" variant="primary" onClick={downloadZip} disabled={order.length === 0}>
-              <Download size={11} /> Đóng gói ZIP ({order.length})
-            </Button>
-          </div>
-
-          <div className="flex items-center gap-2 border-t border-[var(--color-line)] pt-2">
-            <span className="text-[10.5px] text-[var(--color-fg-dim)]">
-              Đã nộp lên Codabench: <b className="font-mono">{file.submitCount}/3</b>
-            </span>
-            <Button size="sm" variant="ghost" onClick={() => bumpSubmit(file.name)}
-                    disabled={file.submitCount >= 3}>
-              +1 lần nộp
-            </Button>
-          </div>
+          <Button size="sm" variant="primary" onClick={() => downloadOne(file)} disabled={check.errors.length > 0}>
+            <FileDown size={11} /> Tải {file.name}.csv
+          </Button>
         </>
       )}
 

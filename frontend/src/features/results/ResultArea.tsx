@@ -7,12 +7,14 @@
  * masonry ở đây là trang trí gây hại.
  */
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Columns3, Grid3x3, LayoutList, Loader2 } from "lucide-react";
+import { CheckSquare, Columns3, Grid3x3, LayoutList, Loader2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { frameUrl } from "../../api/client";
 import { Button, EmptyState, cx } from "../../components/ui";
 import { useSession } from "../../stores/sessionStore";
+import { useSubmission } from "../../stores/submissionStore";
 import { useUi } from "../../stores/uiStore";
 import { BRANCHES, BRANCH_COLOR } from "../../types/api";
 import type { SearchHit, SearchResponse } from "../../types/api";
@@ -52,10 +54,73 @@ function VirtualGrid({ hits }: { hits: SearchHit[] }) {
   const tileSize = useUi((s) => s.tileSize);
   const cursor = useUi((s) => s.cursor);
   const setCursor = useUi((s) => s.setCursor);
+  const bulkMode = useUi((s) => s.bulkMode);
+  const bulkSelection = useUi((s) => s.bulkSelection);
+  const toggleBulkId = useUi((s) => s.toggleBulkId);
+  const addBulkIds = useUi((s) => s.addBulkIds);
+  const clearBulk = useUi((s) => s.clearBulk);
+  const files = useSubmission((s) => s.files);
+  const activeName = useSubmission((s) => s.activeName);
+  const addRow = useSubmission((s) => s.addRow);
   const a = useHitActions();
   const pins = a.session.pins;
   const fbPos = a.session.feedbackPos;
   const fbNeg = a.session.feedbackNeg;
+
+  // Kéo bôi đen hàng loạt — chỉ khởi động khi mousedown rơi đúng vào NỀN (khe
+  // hở giữa các ô hoặc vùng trống), không phải lên 1 ô cụ thể, để không đụng
+  // độ với việc tick từng ô hay mở khung chi tiết.
+  const [dragBox, setDragBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+
+  const commitDrag = (box: { x0: number; y0: number; x1: number; y1: number }) => {
+    const left = Math.min(box.x0, box.x1), right = Math.max(box.x0, box.x1);
+    const top = Math.min(box.y0, box.y1), bottom = Math.max(box.y0, box.y1);
+    if (right - left < 4 && bottom - top < 4) return;
+    const els = parentRef.current?.querySelectorAll<HTMLElement>("[data-bulk-tile]") ?? [];
+    const hitIds = new Set<string>();
+    els.forEach((el) => {
+      const r = el.getBoundingClientRect();
+      if (r.left < right && r.right > left && r.top < bottom && r.bottom > top) hitIds.add(el.dataset.bulkTile!);
+    });
+    // Thứ tự = thứ tự hệ thống đã xếp hạng (thứ tự trong `hits`), KHÔNG phải
+    // thứ tự vùng kéo quét qua — đúng yêu cầu "kéo hàng loạt xếp theo gợi ý".
+    const ordered = hits.filter((h) => hitIds.has(h.id)).map((h) => h.id);
+    if (ordered.length) addBulkIds(ordered);
+  };
+
+  const startDrag = (e: React.MouseEvent) => {
+    if (!bulkMode || e.target !== e.currentTarget) return;
+    e.preventDefault();
+    const start = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY };
+    setDragBox(start);
+    const onMove = (ev: MouseEvent) => setDragBox((p) => (p ? { ...p, x1: ev.clientX, y1: ev.clientY } : p));
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      setDragBox((box) => { if (box) commitDrag(box); return null; });
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  const addSelectedToDraft = () => {
+    const f = activeName ? files[activeName] : null;
+    if (!f) { toast.error("Chưa chọn file nộp bài — mở tab Nộp bài để tạo/chọn."); return; }
+    if (f.kind === "trake") {
+      toast.error("Chọn hàng loạt chỉ dùng cho KIS/QA (1 khung/dòng) — TRAKE cần ghép nhiều khung vào 1 dòng, dùng tính năng nộp riêng ở Chuỗi sự kiện.");
+      return;
+    }
+    const byId = new Map(hits.map((h) => [h.id, h]));
+    let added = 0;
+    for (const id of bulkSelection) {
+      const h = byId.get(id);
+      if (!h) continue;
+      addRow(f.name, { video: h.video, frames: [String(h.frame_idx)] });
+      added++;
+    }
+    toast.success(`Đã thêm ${added} khung vào ${f.name}.csv, theo đúng thứ tự đã chọn`);
+    clearBulk();
+  };
 
   // Đo bề rộng THẬT và theo dõi khi đổi cỡ cửa sổ / thu gọn cột — nếu chỉ tính
   // một lần lúc dựng, lưới sẽ giữ nguyên số cột cũ và để trống một khoảng lớn.
@@ -90,45 +155,72 @@ function VirtualGrid({ hits }: { hits: SearchHit[] }) {
   }, [cursor, cols, rv]);
 
   return (
-    <div ref={parentRef} className="h-full overflow-y-auto px-3 pb-6 pt-2" data-result-scroll>
-      <div style={{ height: rv.getTotalSize(), position: "relative" }}>
-        {rv.getVirtualItems().map((vr) => {
-          const start = vr.index * cols;
-          return (
-            <div
-              key={vr.key}
-              className="absolute left-0 top-0 grid w-full"
-              style={{
-                transform: `translateY(${vr.start}px)`,
-                gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-                gap: GAP,
-              }}
-            >
-              {hits.slice(start, start + cols).map((h, i) => {
-                const idx = start + i;
-                return (
-                  <div key={h.id} onMouseDown={() => setCursor(idx)}>
-                    <ResultTile
-                      hit={h}
-                      selected={cursor === idx}
-                      pinned={pins.some((p) => p.id === h.id)}
-                      good={fbPos.some((f) => f.video === h.video && f.n === h.n)}
-                      bad={fbNeg.some((f) => f.video === h.video && f.n === h.n)}
-                      onOpen={() => a.open(h, hits)}
-                      onPin={() => a.pin(h)}
-                      onRef={() => a.ref(h)}
-                      onGood={() => a.good(h)}
-                      onBad={() => a.bad(h)}
-                      onCompare={() => a.compare(h)}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })}
+    <>
+      <div ref={parentRef} className="h-full overflow-y-auto px-3 pb-6 pt-2"
+           data-result-scroll onMouseDown={startDrag}>
+        <div style={{ height: rv.getTotalSize(), position: "relative" }}>
+          {rv.getVirtualItems().map((vr) => {
+            const start = vr.index * cols;
+            return (
+              <div
+                key={vr.key}
+                className="absolute left-0 top-0 grid w-full"
+                onMouseDown={startDrag}
+                style={{
+                  transform: `translateY(${vr.start}px)`,
+                  gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+                  gap: GAP,
+                }}
+              >
+                {hits.slice(start, start + cols).map((h, i) => {
+                  const idx = start + i;
+                  const bulkIdx = bulkSelection.indexOf(h.id);
+                  return (
+                    <div key={h.id} onMouseDown={() => !bulkMode && setCursor(idx)}>
+                      <ResultTile
+                        hit={h}
+                        selected={cursor === idx}
+                        pinned={pins.some((p) => p.id === h.id)}
+                        good={fbPos.some((f) => f.video === h.video && f.n === h.n)}
+                        bad={fbNeg.some((f) => f.video === h.video && f.n === h.n)}
+                        onOpen={() => a.open(h, hits)}
+                        onPin={() => a.pin(h)}
+                        onRef={() => a.ref(h)}
+                        onGood={() => a.good(h)}
+                        onBad={() => a.bad(h)}
+                        onCompare={() => a.compare(h)}
+                        bulkMode={bulkMode}
+                        bulkChecked={bulkIdx >= 0}
+                        bulkOrder={bulkIdx >= 0 ? bulkIdx + 1 : undefined}
+                        onToggleBulk={() => toggleBulkId(h.id)}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
       </div>
-    </div>
+
+      {dragBox && (
+        <div className="pointer-events-none fixed z-40 border-2 border-[var(--color-focus)] bg-[color-mix(in_srgb,var(--color-focus)_15%,transparent)]"
+             style={{
+               left: Math.min(dragBox.x0, dragBox.x1), top: Math.min(dragBox.y0, dragBox.y1),
+               width: Math.abs(dragBox.x1 - dragBox.x0), height: Math.abs(dragBox.y1 - dragBox.y0),
+             }} />
+      )}
+
+      {bulkMode && bulkSelection.length > 0 && (
+        <div className="fixed bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-panel-2)] px-3 py-2 shadow-2xl">
+          <span className="font-mono text-[11.5px] tabular-nums text-[var(--color-fg-dim)]">
+            Đã chọn {bulkSelection.length} khung
+          </span>
+          <Button size="sm" variant="primary" onClick={addSelectedToDraft}>Thêm vào bản nháp</Button>
+          <Button size="sm" variant="ghost" onClick={clearBulk}><X size={11} /> Bỏ chọn hết</Button>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -240,6 +332,9 @@ export function ResultArea({ data, isLoading, error, onRetry }: {
   const setBranchTab = useUi((s) => s.setBranchTab);
   const tileSize = useUi((s) => s.tileSize);
   const setTileSize = useUi((s) => s.setTileSize);
+  const bulkMode = useUi((s) => s.bulkMode);
+  const setBulkMode = useUi((s) => s.setBulkMode);
+  const clearBulk = useUi((s) => s.clearBulk);
 
   const hits = useMemo(() => {
     if (!data) return [];
@@ -287,6 +382,15 @@ export function ResultArea({ data, isLoading, error, onRetry }: {
         )}
 
         <div className="ml-auto flex items-center gap-1">
+          {view === "grid" && (
+            <button type="button"
+                    onClick={() => { setBulkMode(!bulkMode); if (bulkMode) clearBulk(); }}
+                    title="Chọn hàng loạt — tick từng ô hoặc kéo bôi đen 1 vùng, dùng khi không chắc đáp án nào đúng"
+                    className={cx("mr-1 flex items-center gap-1 rounded-[2px] px-1.5 py-1 text-[10.5px] transition-colors",
+                      bulkMode ? "bg-[var(--color-focus)] text-[#0B1220]" : "text-[var(--color-fg-mute)] hover:bg-[var(--color-panel-2)] hover:text-[var(--color-fg-dim)]")}>
+              <CheckSquare size={12} /> Chọn hàng loạt
+            </button>
+          )}
           {([["grid", Grid3x3, "Lưới"], ["byVideo", LayoutList, "Gom theo video"],
              ["compare", Columns3, "So sánh"]] as const).map(([v, Icon, title]) => (
             <button key={v} type="button" onClick={() => setView(v)} title={title} aria-label={title}

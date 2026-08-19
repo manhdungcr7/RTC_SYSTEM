@@ -4,7 +4,7 @@
  *  người dùng phải thấy NGAY và biết chính xác cái gì còn dùng được — chứ không
  *  ngồi đoán vì sao tìm mãi không ra. */
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Keyboard, Plug, Plus, Search, X } from "lucide-react";
+import { FileSearch, Keyboard, Plug, Plus, Search, X } from "lucide-react";
 import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { toast } from "sonner";
@@ -32,8 +32,9 @@ function FrameLookup() {
 
   return (
     <Pop width={240} trigger={
-      <Button size="sm" variant="ghost" title="Tra tay 1 khung hình theo video + frame_idx">
-        <Search size={12} />
+      <Button size="sm" variant="default" title="Tra tay 1 khung hình theo video + frame_idx"
+              className="border-[var(--color-focus)] text-[var(--color-focus)]">
+        <Search size={12} /> Tra khung
       </Button>
     }>
       <Label className="mb-1.5">Tra tay khung hình</Label>
@@ -136,6 +137,7 @@ function HealthLights() {
 export function Topbar() {
   const setShortcutsOpen = useUi((s) => s.setShortcutsOpen);
   const setConnectionOpen = useUi((s) => s.setConnectionOpen);
+  const setCsvPreviewOpen = useUi((s) => s.setCsvPreviewOpen);
   const files = useSubmission((s) => s.files);
   const totalRows = Object.values(files).reduce((a, f) => a + f.rows.length, 0);
 
@@ -164,6 +166,10 @@ export function Topbar() {
         )}
         <HealthLights />
         <FrameLookup />
+        <Button size="sm" variant="ghost" onClick={() => setCsvPreviewOpen(true)}
+                title="Xem trước file CSV sắp nộp bằng ảnh, theo đúng thứ tự">
+          <FileSearch size={12} />
+        </Button>
         <Button size="sm" variant="ghost" onClick={() => setConnectionOpen(true)} title="Bảng Kết nối">
           <Plug size={12} />
         </Button>

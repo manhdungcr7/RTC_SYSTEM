@@ -34,14 +34,33 @@ interface UiState {
    *  do trước đây Temporal bấm vào khung hình không hiện gì — modal chỉ được
    *  mount trong SearchPage). */
   detailHits: SearchHit[];
-  /** Video đang mở ở Workbench. */
+  /** Khi khác null: khung xem chi tiết đang ở CHẾ ĐỘ GÁN CHUỖI TRAKE — cùng 1
+   *  khung xem (video thật, tua được, đồng hồ frame_idx) như bấm vào 1 kết quả
+   *  bình thường, CỘNG THÊM 1 bộ chọn sự kiện (E1..En): tua tới đâu, bấm "gán
+   *  cho E{k}" tới đó, không phải thoát ra rồi mở lại cho từng sự kiện. Đủ N
+   *  sự kiện thì `onSubmit` được gọi để đưa cả chuỗi vào bản nháp. */
+  detailTrake: {
+    nEvents: number;
+    picks: (number | null)[];   // frame_idx đã gán cho mỗi sự kiện, null = chưa chọn
+    activeEvent: number;        // chỉ số (0-based) sự kiện đang chờ gán
+    onSubmit: (frames: number[]) => void;
+  } | null;
+  /** Video đang mở ở Workbench (xem toàn bộ keyframe/transcript/OCR 1 video). */
   workbenchVideo: string | null;
   /** Danh sách khung hình đang so sánh cạnh nhau (tối đa 4). */
   compare: SearchHit[];
 
+  /** Chế độ CHỌN HÀNG LOẠT ở lưới kết quả — nộp nhiều ứng viên cùng lúc khi
+   *  không chắc đáp án nào đúng (mỗi khung 1 dòng, thứ tự = độ tin cậy). Tick
+   *  từng ô: thứ tự = thứ tự bấm. Kéo bôi đen 1 vùng: thứ tự = thứ tự hệ thống
+   *  đã xếp hạng (không phải thứ tự chuột quét qua). */
+  bulkMode: boolean;
+  bulkSelection: string[];   // id khung hình, theo đúng thứ tự sẽ ghi ra dòng CSV
+
   connectionOpen: boolean;
   shortcutsOpen: boolean;
   paletteOpen: boolean;
+  csvPreviewOpen: boolean;
 
   toggleLeft: () => void;
   toggleRight: () => void;
@@ -53,13 +72,23 @@ interface UiState {
   setTileSize: (n: number) => void;
   setCursor: (n: number) => void;
   moveCursor: (delta: number, max: number) => void;
-  openDetail: (h: SearchHit | null, hits?: SearchHit[]) => void;
+  openDetail: (h: SearchHit | null, hits?: SearchHit[], trake?: {
+    nEvents: number; initialPicks?: (number | null)[]; activeEvent?: number;
+    onSubmit: (frames: number[]) => void;
+  }) => void;
   openWorkbench: (v: string | null) => void;
+  setDetailTrakeActiveEvent: (i: number) => void;
+  pickDetailTrakeFrame: (frameIdx: number) => void;
   toggleCompare: (h: SearchHit) => void;
   clearCompare: () => void;
+  setBulkMode: (b: boolean) => void;
+  toggleBulkId: (id: string) => void;
+  addBulkIds: (ids: string[]) => void;
+  clearBulk: () => void;
   setConnectionOpen: (b: boolean) => void;
   setShortcutsOpen: (b: boolean) => void;
   setPaletteOpen: (b: boolean) => void;
+  setCsvPreviewOpen: (b: boolean) => void;
 }
 
 export const useUi = create<UiState>((set) => ({
@@ -74,11 +103,15 @@ export const useUi = create<UiState>((set) => ({
   cursor: -1,
   detail: null,
   detailHits: [],
+  detailTrake: null,
   workbenchVideo: null,
   compare: [],
+  bulkMode: false,
+  bulkSelection: [],
   connectionOpen: false,
   shortcutsOpen: false,
   paletteOpen: false,
+  csvPreviewOpen: false,
 
   toggleLeft: () => set((s) => ({ leftOpen: !s.leftOpen })),
   toggleRight: () => set((s) => ({ rightOpen: !s.rightOpen })),
@@ -95,8 +128,35 @@ export const useUi = create<UiState>((set) => ({
       const next = s.cursor < 0 ? 0 : s.cursor + delta;
       return { cursor: Math.min(max - 1, Math.max(0, next)) };
     }),
-  openDetail: (h, hits) => set((s) => ({ detail: h, detailHits: hits ?? s.detailHits })),
+  openDetail: (h, hits, trake) => set((s) => ({
+    detail: h,
+    detailHits: hits ?? s.detailHits,
+    detailTrake: h && trake
+      ? {
+          nEvents: trake.nEvents,
+          picks: trake.initialPicks ?? Array(trake.nEvents).fill(null),
+          activeEvent: trake.activeEvent ?? 0,
+          onSubmit: trake.onSubmit,
+        }
+      : null,
+  })),
   openWorkbench: (v) => set({ workbenchVideo: v }),
+  setDetailTrakeActiveEvent: (i) =>
+    set((s) => (s.detailTrake ? { detailTrake: { ...s.detailTrake, activeEvent: i } } : s)),
+  pickDetailTrakeFrame: (frameIdx) =>
+    set((s) => {
+      if (!s.detailTrake) return s;
+      const picks = [...s.detailTrake.picks];
+      picks[s.detailTrake.activeEvent] = frameIdx;
+      // Tự nhảy sang sự kiện kế tiếp CHƯA chọn để bớt thao tác chuyển tab tay.
+      const next = picks.findIndex((p) => p == null);
+      return {
+        detailTrake: {
+          ...s.detailTrake, picks,
+          activeEvent: next >= 0 ? next : s.detailTrake.activeEvent,
+        },
+      };
+    }),
   toggleCompare: (h) =>
     set((s) => {
       const has = s.compare.some((x) => x.id === h.id);
@@ -104,7 +164,22 @@ export const useUi = create<UiState>((set) => ({
       return { compare: s.compare.length >= 4 ? s.compare : [...s.compare, h] };
     }),
   clearCompare: () => set({ compare: [] }),
+  setBulkMode: (b) => set({ bulkMode: b, bulkSelection: b ? [] : [] }),
+  toggleBulkId: (id) =>
+    set((s) => ({
+      bulkSelection: s.bulkSelection.includes(id)
+        ? s.bulkSelection.filter((x) => x !== id)
+        : [...s.bulkSelection, id],
+    })),
+  addBulkIds: (ids) =>
+    set((s) => {
+      const have = new Set(s.bulkSelection);
+      const add = ids.filter((id) => !have.has(id));
+      return add.length ? { bulkSelection: [...s.bulkSelection, ...add] } : s;
+    }),
+  clearBulk: () => set({ bulkSelection: [] }),
   setConnectionOpen: (b) => set({ connectionOpen: b }),
   setShortcutsOpen: (b) => set({ shortcutsOpen: b }),
   setPaletteOpen: (b) => set({ paletteOpen: b }),
+  setCsvPreviewOpen: (b) => set({ csvPreviewOpen: b }),
 }));
