@@ -1,9 +1,20 @@
 #!/bin/bash
 # ================================================================================
-# Tai toan bo 36 shard video (batch 1 + batch 2, ~257.9GB) ve F: — RESUMABLE.
-# Chay lai script nay bat cu luc nao (dut mang, tat may, Ctrl+C...) se TU DONG
-# tiep tuc dung cho tung shard chua xong (aria2c -c) VA bo qua shard da xong
-# (kiem tra dung luong khop truoc khi tai lai).
+# Tai toan bo 14 shard video CHINH THUC cua AIC 2026 (theo dung sheet "Batch1"
+# trong "Du lieu cho vong So Tuyen AIC 2026.xlsx" cua BTC — file nay CHI CO 1
+# sheet Batch1, KHONG co Batch2/K01-K20 nhu nam 2025) — RESUMABLE. Chay lai
+# script nay bat cu luc nao (dut mang, tat may, Ctrl+C...) se TU DONG tiep tuc
+# dung cho tung shard chua xong (aria2c -c) VA bo qua shard da xong (kiem tra
+# dung luong khop truoc khi tai lai).
+#
+# GHI CHU quan trong ve L25 (da tu kiem chung bang cach doc truc tiep central
+# directory cua zip qua HTTP Range, khong tai ca file): server con 2 file THUA
+# "Videos_L25_a1.zip" (V001-V049) va "Videos_L25_b.zip" (V050-V088) — KHONG co
+# trong sheet Batch1 chinh thuc cua AIC 2026, va noi dung uncompressed-size
+# TRUNG KHOP tuyet doi voi "Videos_L25_a.zip" (dong nghia cung 1 video, chi
+# đóng gói lại thanh 2 phan nho hon) — rat co the la file rac con sot tu nam
+# 2025 (sheet AIC 2025 co liet ke ca 3). "Videos_L25_a.zip" MOT MINH da du
+# tron 88 video (V001-V088), KHONG can tai them 2 file kia (đỡ ~12.7GB thua).
 # ================================================================================
 set -uo pipefail
 
@@ -36,19 +47,12 @@ trap 'rm -f "$LOCK"' EXIT INT TERM
 # khong dua vao aria2c doan (tranh truong hop file loi/thieu ma tuong da xong)
 declare -A SIZES=(
   [L21_a]=3378949330   [L22_a]=4154534912   [L23_a]=2043042826  [L24_a]=5796204890
-  [L25_a]=12849314154  [L25_a1]=7213646123  [L25_b]=5505405349  [L26_a]=6587402599
-  [L26_b]=6839785125   [L26_c]=6902904211   [L26_d]=6773208922  [L26_e]=6939942702
-  [L27_a]=2539791837   [L28_a]=7274485525   [L29_a]=6767159141  [L30_a]=4137461892
-  [K01]=10080837769    [K02]=8873807689     [K03]=6202983564    [K04]=6914692432
-  [K05]=8235968560     [K06]=8393787349     [K07]=9599993196    [K08]=10118877395
-  [K09]=9244712163     [K10]=9781033421     [K11]=7321491966    [K12]=8567151014
-  [K13]=7519438212     [K14]=7832550635     [K15]=6696696132    [K16]=7841706808
-  [K17]=6521740715     [K18]=6510257110     [K19]=8352893186    [K20]=7553173294
+  [L25_a]=12849314154  [L26_a]=6587402599   [L26_b]=6839785125  [L26_c]=6902904211
+  [L26_d]=6773208922   [L26_e]=6939942702   [L27_a]=2539791837  [L28_a]=7274485525
+  [L29_a]=6767159141   [L30_a]=4137461892
 )
 
-ORDER="L21_a L22_a L23_a L24_a L25_a L25_a1 L25_b L26_a L26_b L26_c L26_d L26_e L27_a L28_a L29_a L30_a"
-# batch 2 (K01..K20) TAM KHONG tai — chi lay batch 1 theo yeu cau. Muon tai them
-# thi mo lai dong ORDER cu (con luu trong SIZES ben tren, khong xoa de dung sau).
+ORDER="L21_a L22_a L23_a L24_a L25_a L26_a L26_b L26_c L26_d L26_e L27_a L28_a L29_a L30_a"
 
 total_shards=$(echo $ORDER | wc -w)
 i=0
