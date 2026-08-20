@@ -286,7 +286,7 @@ export function Inspector({ current, submitPanel }: {
           </button>
         ))}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className={cx("min-h-0 flex-1", tab === "submit" ? "overflow-hidden" : "overflow-y-auto")}>
         {tab === "explain" && <WhyPanel hit={current} />}
         {tab === "pins" && <PinboardPanel />}
         {tab === "submit" && submitPanel}

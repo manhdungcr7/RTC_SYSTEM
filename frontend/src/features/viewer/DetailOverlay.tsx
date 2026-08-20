@@ -35,6 +35,9 @@ export function DetailOverlay() {
   const pickTrakeFrame = useUi((s) => s.pickDetailTrakeFrame);
   const openDetail = useUi((s) => s.openDetail);
   const openWorkbench = useUi((s) => s.openWorkbench);
+  const detailReturnToCsv = useUi((s) => s.detailReturnToCsv);
+  const setDetailReturnToCsv = useUi((s) => s.setDetailReturnToCsv);
+  const setCsvPreviewOpen = useUi((s) => s.setCsvPreviewOpen);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [stripMode, setStripMode] = useState<StripMode>("keyframe");
 
@@ -59,6 +62,11 @@ export function DetailOverlay() {
     const n = idx + d;
     if (n >= 0 && n < hits.length) openDetail(hits[n]);
   };
+  const closeDetail = (returnToCsv = false) => {
+    openDetail(null);
+    if (returnToCsv && detailReturnToCsv) setCsvPreviewOpen(true);
+    setDetailReturnToCsv(false);
+  };
 
   // Nhảy tới đúng mốc thời gian của khung hình khi mở / đổi khung.
   useEffect(() => {
@@ -71,7 +79,7 @@ export function DetailOverlay() {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
-      if (e.key === "Escape") openDetail(null);
+      if (e.key === "Escape") closeDetail(true);
       else if (e.key === "ArrowLeft") { e.preventDefault(); go(-1); }
       else if (e.key === "ArrowRight") { e.preventDefault(); go(1); }
       else if (e.key === ",") { e.preventDefault(); stepFrames(-1); }
@@ -86,7 +94,7 @@ export function DetailOverlay() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [hit, idx, hits, openDetail, stepFrames, seekTo]);
+  }, [hit, idx, hits, openDetail, stepFrames, seekTo, detailReturnToCsv]);
 
   const strip = useMemo(() => {
     if (!hit || !map) return [];
@@ -144,10 +152,10 @@ export function DetailOverlay() {
           <Button size="sm" variant="ghost" onClick={() => go(1)} disabled={idx >= hits.length - 1}>
             <ChevronRight size={13} />
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => { openWorkbench(hit.video); openDetail(null); }}>
+          <Button size="sm" variant="ghost" onClick={() => { openWorkbench(hit.video); closeDetail(); }}>
             <Layers size={12} /> Mở cả video
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => openDetail(null)} aria-label="Đóng">
+          <Button size="sm" variant="ghost" onClick={() => closeDetail(true)} aria-label="Đóng">
             <X size={14} />
           </Button>
         </div>

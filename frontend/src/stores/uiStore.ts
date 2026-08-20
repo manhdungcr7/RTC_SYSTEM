@@ -61,6 +61,7 @@ interface UiState {
   shortcutsOpen: boolean;
   paletteOpen: boolean;
   csvPreviewOpen: boolean;
+  detailReturnToCsv: boolean;
 
   toggleLeft: () => void;
   toggleRight: () => void;
@@ -89,6 +90,7 @@ interface UiState {
   setShortcutsOpen: (b: boolean) => void;
   setPaletteOpen: (b: boolean) => void;
   setCsvPreviewOpen: (b: boolean) => void;
+  setDetailReturnToCsv: (b: boolean) => void;
 }
 
 export const useUi = create<UiState>((set) => ({
@@ -112,6 +114,7 @@ export const useUi = create<UiState>((set) => ({
   shortcutsOpen: false,
   paletteOpen: false,
   csvPreviewOpen: false,
+  detailReturnToCsv: false,
 
   toggleLeft: () => set((s) => ({ leftOpen: !s.leftOpen })),
   toggleRight: () => set((s) => ({ rightOpen: !s.rightOpen })),
@@ -182,4 +185,5 @@ export const useUi = create<UiState>((set) => ({
   setShortcutsOpen: (b) => set({ shortcutsOpen: b }),
   setPaletteOpen: (b) => set({ paletteOpen: b }),
   setCsvPreviewOpen: (b) => set({ csvPreviewOpen: b }),
+  setDetailReturnToCsv: (b) => set({ detailReturnToCsv: b }),
 }));

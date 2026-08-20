@@ -67,6 +67,7 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (x: T) => Promise<R
 
 export function CsvPreviewModal({ open, onOpenChange }: { open: boolean; onOpenChange: (b: boolean) => void }) {
   const openDetail = useUi((s) => s.openDetail);
+  const setDetailReturnToCsv = useUi((s) => s.setDetailReturnToCsv);
   const [kind, setKind] = useState<QueryKind>("kis");
   const [fileName, setFileName] = useState("");
   const [rows, setRows] = useState<PreviewRow[] | null>(null);
@@ -177,7 +178,11 @@ export function CsvPreviewModal({ open, onOpenChange }: { open: boolean; onOpenC
                       {f.hit ? (
                         <>
                           <button type="button"
-                                  onClick={() => { onOpenChange(false); openDetail(f.hit!, [f.hit!]); }}
+                                  onClick={() => {
+                                    setDetailReturnToCsv(true);
+                                    onOpenChange(false);
+                                    openDetail(f.hit!, [f.hit!]);
+                                  }}
                                   title="Mở video, tua tới đúng khung này — giống hệt bấm vào 1 kết quả tìm kiếm">
                             <img src={f.hit.thumb_url} alt="" loading="lazy"
                                  className="h-[74px] w-[132px] rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-black object-cover hover:border-[var(--color-focus)]" />

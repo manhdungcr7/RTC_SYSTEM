@@ -13,9 +13,9 @@
  */
 import { useMutation } from "@tanstack/react-query";
 import {
-  Anchor, ChevronDown, Loader2, Lock, Plus, Search, ThumbsDown, ThumbsUp, Trash2, X,
+  Anchor, CheckSquare, ChevronDown, Loader2, Lock, Plus, Search, ThumbsDown, ThumbsUp, Trash2, X,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { api, thumbUrl } from "../api/client";
@@ -55,11 +55,13 @@ const VISUAL_BRANCHES = TEMPORAL_BRANCHES;
 const TEXT_BRANCHES = ["ocr", "asr"] as const;
 const initialWeights: WeightState = {
   metaclip2: { enabled: true, weight: 1.0 },
-  pecore: { enabled: false, weight: DEFAULT_WEIGHTS.pecore },
-  beit3: { enabled: false, weight: DEFAULT_WEIGHTS.beit3 },
-  capemb: { enabled: false, weight: DEFAULT_WEIGHTS.capemb },
+  pecore: { enabled: true, weight: DEFAULT_WEIGHTS.pecore },
+  beit3: { enabled: true, weight: DEFAULT_WEIGHTS.beit3 },
+  capemb: { enabled: true, weight: DEFAULT_WEIGHTS.capemb },
   ocr: { enabled: false, weight: DEFAULT_WEIGHTS.ocr },
   asr: { enabled: false, weight: DEFAULT_WEIGHTS.asr },
+  object: { enabled: false, weight: DEFAULT_WEIGHTS.object },
+  
 };
 
 export function TemporalPage() {
@@ -74,6 +76,12 @@ export function TemporalPage() {
   const [scope, setScope] = useState<VideoScopeValue>({ videos: [], invert: false });
   // Khung người dùng đã tự đổi, theo khoá "chỉ-số-ứng-viên-chỉ-số-sự-kiện".
   const [swaps, setSwaps] = useState<Record<string, SearchHit>>({});
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedFrames, setSelectedFrames] = useState<string[]>([]);
+  const [selectionAnswer, setSelectionAnswer] = useState("");
+  const [dragBox, setDragBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  const selectionAreaRef = useRef<HTMLDivElement>(null);
+  const candidateRangeStartRef = useRef<number | null>(null);
   // Phản hồi liên quan (✓/✗) RIÊNG từng sự kiện — key = chỉ số sự kiện. KHÔNG
   // reset khi tìm lại (khác `swaps`) vì đây chính là thứ người dùng muốn giữ
   // qua nhiều lượt tìm để dịch dần vector về đúng hướng.
@@ -105,9 +113,21 @@ export function TemporalPage() {
   const files = useSubmission((s) => s.files);
   const activeName = useSubmission((s) => s.activeName);
   const addRow = useSubmission((s) => s.addRow);
+  const activeFile = activeName ? files[activeName] : null;
 
   const setEv = (i: number, u: Partial<EventRow>) =>
     setEvents((p) => p.map((e, k) => (k === i ? { ...e, ...u } : e)));
+
+  const pasteEventChain = (text: string) => {
+    const markers = [...text.matchAll(/(?:^|\r?\n)\s*E\d+\s*:\s*/gi)];
+    if (markers.length < 2) return false;
+    const parsed = markers.map((marker, i) =>
+      text.slice((marker.index ?? 0) + marker[0].length, markers[i + 1]?.index ?? text.length).trim());
+    setEvents(parsed.map((event, i) => ({
+      ...newEvent(), text: event, anchor: i === 0 || i === parsed.length - 1,
+    })));
+    return true;
+  };
 
   const toggleAnchor = (i: number) =>
     setEvents((p) => {
@@ -198,6 +218,88 @@ export function TemporalPage() {
     toast.success(`Đã thêm chuỗi ${c.video} vào ${f.name}.csv`);
   };
 
+  const addSelectedFrames = () => {
+    const f = activeFile;
+    if (!f) { toast.error("Chưa chọn file nộp bài — mở tab Nộp bài để tạo/chọn."); return; }
+    const chosen = selectedFrames.flatMap((key) => {
+      const [ci, k] = key.split("-").map(Number);
+      const candidate = search.data?.candidates[ci];
+      const hit = candidate ? (swaps[key] ?? candidate.hits[k]) : null;
+      return hit ? [hit] : [];
+    });
+    if (f.kind === "trake") {
+      const byVideo = new Map<string, SearchHit[]>();
+      chosen.forEach((h) => byVideo.set(h.video, [...(byVideo.get(h.video) ?? []), h]));
+      for (const [video, hits] of byVideo) {
+        for (let i = 0; i < hits.length; i += f.nEvents) {
+          const frames = hits.slice(i, i + f.nEvents).map((h) => String(h.frame_idx));
+          while (frames.length < f.nEvents) frames.push("");
+          addRow(f.name, { video, frames });
+        }
+      }
+    } else {
+      chosen.forEach((h) => addRow(f.name, {
+        video: h.video,
+        frames: [String(h.frame_idx)],
+        answer: f.kind === "qa" ? selectionAnswer : "",
+      }));
+    }
+    toast.success(`Đã thêm ${chosen.length} khung vào ${f.name}.csv`);
+    setSelectedFrames([]);
+    candidateRangeStartRef.current = null;
+    if (f.kind === "qa") setSelectionAnswer("");
+  };
+
+  const selectCandidate = (candidateIdx: number, shiftKey: boolean) => {
+    const candidates = search.data?.candidates ?? [];
+    const keysFor = (ci: number) => candidates[ci]?.hits.map((_, k) => `${ci}-${k}`) ?? [];
+    if (shiftKey) {
+      if (candidateRangeStartRef.current != null) {
+        const [lo, hi] = candidateRangeStartRef.current <= candidateIdx
+          ? [candidateRangeStartRef.current, candidateIdx]
+          : [candidateIdx, candidateRangeStartRef.current];
+        const rangeKeys = candidates.slice(lo, hi + 1)
+          .flatMap((c, offset) => c.hits.map((_, k) => `${lo + offset}-${k}`));
+        setSelectedFrames((p) => [...p, ...rangeKeys.filter((key) => !p.includes(key))]);
+        candidateRangeStartRef.current = null;
+        return;
+      }
+      setSelectedFrames((p) => [...p, ...keysFor(candidateIdx).filter((key) => !p.includes(key))]);
+      candidateRangeStartRef.current = candidateIdx;
+      return;
+    }
+    const keys = keysFor(candidateIdx);
+    setSelectedFrames((p) => keys.every((key) => p.includes(key))
+      ? p.filter((key) => !keys.includes(key))
+      : [...p, ...keys.filter((key) => !p.includes(key))]);
+    candidateRangeStartRef.current = null;
+  };
+
+  const startSelectDrag = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!selectMode || e.target !== e.currentTarget) return;
+    e.preventDefault();
+    const start = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY };
+    setDragBox(start);
+    const onMove = (ev: MouseEvent) => setDragBox((p) => p ? { ...p, x1: ev.clientX, y1: ev.clientY } : p);
+    const onUp = (ev: MouseEvent) => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      const left = Math.min(start.x0, ev.clientX), right = Math.max(start.x0, ev.clientX);
+      const top = Math.min(start.y0, ev.clientY), bottom = Math.max(start.y0, ev.clientY);
+      const ids = new Set<string>();
+      selectionAreaRef.current?.querySelectorAll<HTMLElement>("[data-temporal-select]").forEach((el) => {
+        const r = el.getBoundingClientRect();
+        if (r.left < right && r.right > left && r.top < bottom && r.bottom > top)
+          ids.add(el.dataset.temporalSelect!);
+      });
+      const ordered = search.data?.candidates.flatMap((c, ci) => c.hits.map((_, k) => `${ci}-${k}`)) ?? [];
+      setSelectedFrames((p) => [...p, ...ordered.filter((id) => ids.has(id) && !p.includes(id))]);
+      setDragBox(null);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
   // Mở khung xem chi tiết THẬT (video tua được, đồng hồ frame_idx) — giống hệt
   // bấm vào 1 kết quả bình thường — CỘNG THÊM bộ chọn sự kiện: tua tới đâu,
   // bấm gán tới đó, đổi tab sự kiện, tua tiếp, KHÔNG phải thoát ra mở lại cho
@@ -275,6 +377,9 @@ export function TemporalPage() {
                     E{i + 1}
                   </span>
                   <TextArea rows={1} value={ev.text} onChange={(e) => setEv(i, { text: e.target.value })}
+                            onPaste={(e) => {
+                              if (pasteEventChain(e.clipboardData.getData("text"))) e.preventDefault();
+                            }}
                             placeholder={`Sự kiện ${i + 1}…`} className="flex-1 py-1 text-[12px] leading-snug" />
                   <button type="button" onClick={() => toggleAnchor(i)}
                           title="Dùng sự kiện này làm neo thị giác"
@@ -404,7 +509,7 @@ export function TemporalPage() {
             phụ khi câu mô tả chi tiết mà thị giác thuần chưa phân biệt được.
           </p>
           <Button size="sm" variant="ghost" className="mb-1.5" onClick={() => setWeights(initialWeights)}
-                  title="Trọng số về mặc định (metaclip2 bật, các nhánh phụ tắt, ocr/asr bật)">
+                  title="Trọng số về mặc định (MC2, PE, B3, CAP bật; các nhánh còn lại tắt)">
             Mặc định
           </Button>
           <div className="flex flex-col gap-0.5">
@@ -461,9 +566,22 @@ export function TemporalPage() {
             hint="Thử đổi cặp neo thị giác sang hai sự kiện dễ nhận diện hơn, tăng số video ứng viên, hoặc bỏ giới hạn phạm vi video."
           />
         ) : (
-          <div className="flex flex-col gap-2 p-3">
+          <div ref={selectionAreaRef} className="flex flex-col gap-2 p-3">
+            <div className="flex justify-end">
+              <Button size="sm" variant="ghost"
+                      onClick={() => {
+                        setSelectMode((v) => !v);
+                        candidateRangeStartRef.current = null;
+                        if (selectMode) setSelectedFrames([]);
+                      }}
+                      className={selectMode ? "bg-[var(--color-focus)] text-[#0B1220]" : undefined}>
+                {selectMode ? <X size={12} /> : <CheckSquare size={12} />}
+                {selectMode ? "Hủy" : "Chọn"}
+              </Button>
+            </div>
             {search.data.candidates.map((c, i) => {
               const weakest = Math.min(...c.hits.map((h) => h.score));
+              const candidateSelected = c.hits.every((_, k) => selectedFrames.includes(`${i}-${k}`));
               return (
                 <div key={`${c.video}-${i}`}
                      className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-panel)] p-2">
@@ -474,14 +592,25 @@ export function TemporalPage() {
                       tổng {c.total_score.toFixed(3)}
                     </span>
                     <div className="ml-auto flex gap-1">
+                      {selectMode && (
+                        <button type="button" onClick={(e) => selectCandidate(i, e.shiftKey)}
+                                title={`Chọn cả ${c.hits.length} khung; giữ Shift và click hai cụm để chọn cả khoảng`}
+                                className="flex items-center gap-1 rounded-[2px] px-1.5 py-1 text-[10.5px] text-[var(--color-fg-dim)] hover:bg-[var(--color-panel-2)]">
+                          <input type="checkbox" checked={candidateSelected} readOnly
+                                 className="pointer-events-none h-3 w-3 accent-[var(--color-focus)]" />
+                          Chọn {c.hits.length}
+                        </button>
+                      )}
                       <Button size="sm" variant="ghost" onClick={() => openWorkbench(c.video)}>
                         Mở cả video
                       </Button>
                       <Button size="sm" onClick={() => addChain(c, i)}>Đưa vào bản nháp</Button>
                     </div>
                   </div>
-                  <div className="flex gap-1.5 overflow-x-auto pb-1">
+                  <div className="flex gap-1.5 overflow-x-auto pb-1" onMouseDown={startSelectDrag}>
                     {c.hits.map((h, k) => {
+                      const selectKey = `${i}-${k}`;
+                      const selectedOrder = selectedFrames.indexOf(selectKey);
                       const weak = h.score <= weakest + 1e-9 && c.hits.length > 1;
                       const chosen = swaps[`${i}-${k}`] ?? h;
                       const origIdx = filledIdxs[k];
@@ -489,17 +618,26 @@ export function TemporalPage() {
                       const isPos = fb?.positive.some((r) => r.video === chosen.video && r.n === chosen.n);
                       const isNeg = fb?.negative.some((r) => r.video === chosen.video && r.n === chosen.n);
                       return (
-                        <div key={k} className="shrink-0">
+                        <div key={k} className="shrink-0" data-temporal-select={selectMode ? selectKey : undefined}>
                           <div className="relative">
-                            <button type="button" onClick={() => openTrakePicker(i, c, k)}
+                            <button type="button" onClick={() => selectMode
+                                      ? setSelectedFrames((p) => p.includes(selectKey)
+                                        ? p.filter((x) => x !== selectKey) : [...p, selectKey])
+                                      : openTrakePicker(i, c, k)}
                                     title="Xem trọn video, tự chọn/tinh chỉnh khung cho sự kiện này rồi nộp"
                                     className={cx("block rounded-[var(--radius-sm)] border transition-colors",
-                                      weak ? "border-[var(--color-warn)]"
-                                           : "border-[var(--color-line)] hover:border-[var(--color-focus)]")}>
+                                      selectedOrder >= 0 ? "border-[var(--color-focus)] ring-1 ring-[var(--color-focus)]"
+                                           : weak ? "border-[var(--color-warn)]"
+                                           : "border-[var(--color-line)] hover:border-[var(--color-focus)]")}> 
                               <img src={thumbUrl(chosen.video, chosen.n)} alt="" loading="lazy"
                                    className="h-[80px] w-[142px] bg-black object-cover" />
                             </button>
-                            <div className="absolute right-0.5 top-0.5 flex gap-0.5">
+                            {selectMode && selectedOrder >= 0 && (
+                              <span className="absolute left-1 top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--color-focus)] px-1 font-mono text-[10px] font-semibold text-[#0B1220]">
+                                {selectedOrder + 1}
+                              </span>
+                            )}
+                            {!selectMode && <div className="absolute right-0.5 top-0.5 flex gap-0.5">
                               <button type="button"
                                       onClick={() => markFromResult(k, { video: chosen.video, n: chosen.n }, "positive")}
                                       title="Đúng sự kiện này — dịch vector tìm về hướng khung này"
@@ -516,7 +654,7 @@ export function TemporalPage() {
                                               : "border-[var(--color-line)] bg-[color-mix(in_srgb,black_60%,transparent)] text-[var(--color-fg-mute)] hover:text-[var(--color-err)]")}>
                                 <ThumbsDown size={9} />
                               </button>
-                            </div>
+                            </div>}
                           </div>
                           <button type="button" onClick={() => openTrakePicker(i, c, k)}
                                   className="block w-full text-left">
@@ -538,6 +676,27 @@ export function TemporalPage() {
                 </div>
               );
             })}
+            {selectMode && selectedFrames.length > 0 && (
+              <div className="fixed bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-panel-2)] px-3 py-2 shadow-2xl">
+                <span className="font-mono text-[11.5px]">Đã chọn {selectedFrames.length} khung</span>
+                {activeFile?.kind === "qa" && (
+                  <TextInput value={selectionAnswer} onChange={(e) => setSelectionAnswer(e.target.value)}
+                             placeholder="Nhập đáp án QA" className="w-[180px] py-1 text-[11px]" />
+                )}
+                <Button size="sm" variant="primary" onClick={addSelectedFrames}>Thêm vào bản nháp</Button>
+                <Button size="sm" variant="ghost" onClick={() => {
+                  setSelectedFrames([]);
+                  candidateRangeStartRef.current = null;
+                }}>Bỏ chọn hết</Button>
+              </div>
+            )}
+            {dragBox && (
+              <div className="pointer-events-none fixed z-40 border-2 border-[var(--color-focus)] bg-[color-mix(in_srgb,var(--color-focus)_15%,transparent)]"
+                   style={{
+                     left: Math.min(dragBox.x0, dragBox.x1), top: Math.min(dragBox.y0, dragBox.y1),
+                     width: Math.abs(dragBox.x1 - dragBox.x0), height: Math.abs(dragBox.y1 - dragBox.y0),
+                   }} />
+            )}
           </div>
         )}
       </main>

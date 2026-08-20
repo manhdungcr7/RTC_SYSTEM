@@ -18,6 +18,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useMutation } from "@tanstack/react-query";
 import { AlertTriangle, Check, Copy, FileDown, GripVertical, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { toast } from "sonner";
 
 import { api } from "../../api/client";
@@ -108,6 +109,7 @@ function Row({ file, row, index }: { file: DraftFile; row: DraftRow; index: numb
 }
 
 export function SubmitPanel() {
+  const { pathname } = useLocation();
   const files = useSubmission((s) => s.files);
   const order = useSubmission((s) => s.order);
   const activeName = useSubmission((s) => s.activeName);
@@ -121,6 +123,12 @@ export function SubmitPanel() {
 
   const [newName, setNewName] = useState("query-p1-1-kis");
   const [newKind, setNewKind] = useState<QueryKind>("kis");
+
+  useEffect(() => {
+    if (pathname !== "/temporal") return;
+    setNewKind("trake");
+    setNewName((prev) => swapKindSuffix(prev, "trake"));
+  }, [pathname]);
 
   const file = activeName ? files[activeName] : null;
   const check = useMemo(() => (file ? validateFile(file) : { errors: [], warnings: [] }), [file]);
@@ -180,7 +188,8 @@ export function SubmitPanel() {
   };
 
   return (
-    <div className="flex flex-col gap-2 p-3">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
       <div className="flex flex-col gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-line)] p-2">
         <Label className="mb-0">Tạo file kết quả</Label>
         <div className="flex gap-1">
@@ -250,16 +259,6 @@ export function SubmitPanel() {
             Thứ tự dòng có tính điểm — dòng trên cùng là đáp án bạn tin nhất. Kéo biểu tượng bên trái để đổi.
           </p>
 
-          {/* Hàng RIÊNG, vị trí CỐ ĐỊNH — trước gộp chung hàng với loại/số sự kiện
-              nên vị trí nút nhảy qua nhảy lại tuỳ có hiện ô "số sự kiện" hay
-              không, dễ bấm nhầm. */}
-          <div>
-            <Button size="sm" variant="ghost" onClick={() => removeFile(file.name)}
-                    className="border border-[var(--color-line)] text-[var(--color-err)] hover:border-[var(--color-err)] hover:bg-[color-mix(in_srgb,var(--color-err)_10%,transparent)]">
-              <Trash2 size={11} /> Xoá file "{file.name}"
-            </Button>
-          </div>
-
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -328,9 +327,6 @@ export function SubmitPanel() {
             </pre>
           </div>
 
-          <Button size="sm" variant="primary" onClick={() => downloadOne(file)} disabled={check.errors.length > 0}>
-            <FileDown size={11} /> Tải {file.name}.csv
-          </Button>
         </>
       )}
 
@@ -339,6 +335,19 @@ export function SubmitPanel() {
           Tạo một file kết quả ở trên để bắt đầu.<br />
           Tên file đặt trùng tên câu truy vấn BTC giao, ví dụ <span className="font-mono">query-p1-1-kis</span>.
         </p>
+      )}
+      </div>
+
+      {file && (
+        <div className="flex shrink-0 flex-col gap-1 border-t border-[var(--color-line)] bg-[var(--color-panel)] p-3">
+          <Button size="sm" variant="primary" onClick={() => downloadOne(file)} disabled={check.errors.length > 0}>
+            <FileDown size={11} /> Tải {file.name}.csv
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => removeFile(file.name)}
+                  className="text-[var(--color-err)] hover:bg-[color-mix(in_srgb,var(--color-err)_10%,transparent)] hover:text-[var(--color-err)]">
+            <Trash2 size={11} /> Xoá file "{file.name}"
+          </Button>
+        </div>
       )}
     </div>
   );

@@ -63,7 +63,7 @@ interface Props {
   bulkMode?: boolean;
   bulkChecked?: boolean;
   bulkOrder?: number;   // 1-based thứ tự sẽ ghi ra dòng CSV, undefined = chưa chọn
-  onToggleBulk?: () => void;
+  onToggleBulk?: (shiftKey: boolean) => void;
 }
 
 export const ResultTile = memo(function ResultTile({
@@ -84,7 +84,7 @@ export const ResultTile = memo(function ResultTile({
               : "border-[var(--color-line)] hover:border-[var(--color-line-hi)]",
       )}
     >
-      <button type="button" onClick={bulkMode ? onToggleBulk : onOpen} className="block w-full text-left"
+      <button type="button" onClick={bulkMode ? (e) => onToggleBulk?.(e.shiftKey) : onOpen} className="block w-full text-left"
               aria-label={`Mở ${hit.video} khung ${hit.frame_idx}`}>
         <img
           src={hit.thumb_url} alt="" loading="lazy" decoding="async"
@@ -95,8 +95,8 @@ export const ResultTile = memo(function ResultTile({
       {bulkMode && (
         <label className="absolute left-1 top-1 flex h-5 w-5 items-center justify-center rounded-[2px] border bg-black/72"
                style={bulkChecked ? { borderColor: "var(--color-focus)" } : { borderColor: "rgba(255,255,255,.3)" }}
-               onClick={(e) => e.stopPropagation()}>
-          <input type="checkbox" checked={!!bulkChecked} onChange={onToggleBulk} className="sr-only" />
+               onClick={(e) => { e.stopPropagation(); onToggleBulk?.(e.shiftKey); }}>
+          <input type="checkbox" checked={!!bulkChecked} readOnly className="sr-only" />
           <span className="font-mono text-[10px] font-semibold tabular-nums"
                 style={{ color: bulkChecked ? "var(--color-focus)" : "var(--color-fg-mute)" }}>
             {bulkChecked ? bulkOrder : ""}

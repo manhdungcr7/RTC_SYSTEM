@@ -201,7 +201,7 @@ export const useSession = create<Store>()(
                 [s.activeId]: {
                   ...cur,
                   weights: { ...DEFAULT_WEIGHTS },
-                  enabled: { ...cur.enabled, ocr: false, asr: false },
+                  enabled: { ...DEFAULT_ENABLED },
                   ocr: { query: "", mode: "score" },
                   asr: { query: "", lexical: true, semantic: true, mode: "score",
                          window_before: 3, window_after: 5 },

@@ -12,7 +12,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { frameUrl } from "../../api/client";
-import { Button, EmptyState, cx } from "../../components/ui";
+import { Button, EmptyState, TextInput, cx } from "../../components/ui";
 import { useSession } from "../../stores/sessionStore";
 import { useSubmission } from "../../stores/submissionStore";
 import { useUi } from "../../stores/uiStore";
@@ -62,6 +62,8 @@ function VirtualGrid({ hits }: { hits: SearchHit[] }) {
   const files = useSubmission((s) => s.files);
   const activeName = useSubmission((s) => s.activeName);
   const addRow = useSubmission((s) => s.addRow);
+  const activeFile = activeName ? files[activeName] : null;
+  const [qaAnswer, setQaAnswer] = useState("");
   const a = useHitActions();
   const pins = a.session.pins;
   const fbPos = a.session.feedbackPos;
@@ -71,6 +73,31 @@ function VirtualGrid({ hits }: { hits: SearchHit[] }) {
   // hở giữa các ô hoặc vùng trống), không phải lên 1 ô cụ thể, để không đụng
   // độ với việc tick từng ô hay mở khung chi tiết.
   const [dragBox, setDragBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  const rangeStartRef = useRef<string | null>(null);
+
+  const selectBulk = (id: string, shiftKey: boolean) => {
+    if (shiftKey) {
+      if (rangeStartRef.current) {
+        const start = hits.findIndex((h) => h.id === rangeStartRef.current);
+        const end = hits.findIndex((h) => h.id === id);
+        if (start >= 0 && end >= 0) {
+          const [lo, hi] = start <= end ? [start, end] : [end, start];
+          addBulkIds(hits.slice(lo, hi + 1).map((h) => h.id));
+          rangeStartRef.current = null;
+          return;
+        }
+      }
+      toggleBulkId(id);
+      rangeStartRef.current = id;
+      return;
+    }
+    toggleBulkId(id);
+    rangeStartRef.current = null;
+  };
+
+  useEffect(() => {
+    if (!bulkMode) rangeStartRef.current = null;
+  }, [bulkMode]);
 
   const commitDrag = (box: { x0: number; y0: number; x1: number; y1: number }) => {
     const left = Math.min(box.x0, box.x1), right = Math.max(box.x0, box.x1);
@@ -104,7 +131,7 @@ function VirtualGrid({ hits }: { hits: SearchHit[] }) {
   };
 
   const addSelectedToDraft = () => {
-    const f = activeName ? files[activeName] : null;
+    const f = activeFile;
     if (!f) { toast.error("Chưa chọn file nộp bài — mở tab Nộp bài để tạo/chọn."); return; }
     if (f.kind === "trake") {
       toast.error("Chọn hàng loạt chỉ dùng cho KIS/QA (1 khung/dòng) — TRAKE cần ghép nhiều khung vào 1 dòng, dùng tính năng nộp riêng ở Chuỗi sự kiện.");
@@ -115,11 +142,17 @@ function VirtualGrid({ hits }: { hits: SearchHit[] }) {
     for (const id of bulkSelection) {
       const h = byId.get(id);
       if (!h) continue;
-      addRow(f.name, { video: h.video, frames: [String(h.frame_idx)] });
+      addRow(f.name, {
+        video: h.video,
+        frames: [String(h.frame_idx)],
+        answer: f.kind === "qa" ? qaAnswer : "",
+      });
       added++;
     }
     toast.success(`Đã thêm ${added} khung vào ${f.name}.csv, theo đúng thứ tự đã chọn`);
     clearBulk();
+    rangeStartRef.current = null;
+    if (f.kind === "qa") setQaAnswer("");
   };
 
   // Đo bề rộng THẬT và theo dõi khi đổi cỡ cửa sổ / thu gọn cột — nếu chỉ tính
@@ -192,7 +225,7 @@ function VirtualGrid({ hits }: { hits: SearchHit[] }) {
                         bulkMode={bulkMode}
                         bulkChecked={bulkIdx >= 0}
                         bulkOrder={bulkIdx >= 0 ? bulkIdx + 1 : undefined}
-                        onToggleBulk={() => toggleBulkId(h.id)}
+                        onToggleBulk={(shiftKey) => selectBulk(h.id, shiftKey)}
                       />
                     </div>
                   );
@@ -216,8 +249,14 @@ function VirtualGrid({ hits }: { hits: SearchHit[] }) {
           <span className="font-mono text-[11.5px] tabular-nums text-[var(--color-fg-dim)]">
             Đã chọn {bulkSelection.length} khung
           </span>
+          {activeFile?.kind === "qa" && (
+            <TextInput value={qaAnswer} onChange={(e) => setQaAnswer(e.target.value)}
+                       placeholder="Nhập đáp án QA" className="w-[180px] py-1 text-[11px]" />
+          )}
           <Button size="sm" variant="primary" onClick={addSelectedToDraft}>Thêm vào bản nháp</Button>
-          <Button size="sm" variant="ghost" onClick={clearBulk}><X size={11} /> Bỏ chọn hết</Button>
+          <Button size="sm" variant="ghost" onClick={() => { clearBulk(); rangeStartRef.current = null; }}>
+            <X size={11} /> Bỏ chọn hết
+          </Button>
         </div>
       )}
     </>
@@ -384,11 +423,15 @@ export function ResultArea({ data, isLoading, error, onRetry }: {
         <div className="ml-auto flex items-center gap-1">
           {view === "grid" && (
             <button type="button"
-                    onClick={() => { setBulkMode(!bulkMode); if (bulkMode) clearBulk(); }}
+                    onClick={() => {
+                      setBulkMode(!bulkMode);
+                      if (bulkMode) clearBulk();
+                    }}
                     title="Chọn hàng loạt — tick từng ô hoặc kéo bôi đen 1 vùng, dùng khi không chắc đáp án nào đúng"
                     className={cx("mr-1 flex items-center gap-1 rounded-[2px] px-1.5 py-1 text-[10.5px] transition-colors",
                       bulkMode ? "bg-[var(--color-focus)] text-[#0B1220]" : "text-[var(--color-fg-mute)] hover:bg-[var(--color-panel-2)] hover:text-[var(--color-fg-dim)]")}>
-              <CheckSquare size={12} /> Chọn hàng loạt
+              {bulkMode ? <X size={12} /> : <CheckSquare size={12} />}
+              {bulkMode ? "Hủy" : "Chọn"}
             </button>
           )}
           {([["grid", Grid3x3, "Lưới"], ["byVideo", LayoutList, "Gom theo video"],
