@@ -9,9 +9,10 @@
  * quét hết mất khoảng 30–60 giây. Không có màn hình này thì thao tác đó phải tua
  * video thủ công, chậm hơn cả chục lần.
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { api, thumbUrl } from "../../api/client";
 import { Button, TextInput } from "../../components/ui";
@@ -23,6 +24,7 @@ export function WorkbenchOverlay() {
   const close = useUi((s) => s.openWorkbench);
   const openDetail = useUi((s) => s.openDetail);
   const [filter, setFilter] = useState("");
+  const [frameIdx, setFrameIdx] = useState("");
 
   const enabled = !!video;
   const { data: map } = useQuery({
@@ -36,6 +38,15 @@ export function WorkbenchOverlay() {
   const { data: ocr } = useQuery({
     queryKey: ["ocr", video], queryFn: ({ signal }) => api.videoOcr(video!, signal),
     enabled, staleTime: Infinity,
+  });
+
+  const lookup = useMutation({
+    mutationFn: () => api.lookupFrame(video!, frameIdx.trim() ? Number(frameIdx) : 1),
+    onSuccess: (hit) => {
+      openDetail(hit, [hit]);
+      close(null);
+    },
+    onError: (error: Error) => toast.error(error.message || "Không tra được khung hình này"),
   });
 
   const q = filter.trim().toLowerCase();
@@ -94,6 +105,16 @@ export function WorkbenchOverlay() {
           <TextInput value={filter} onChange={(e) => setFilter(e.target.value)}
                      placeholder="Lọc trong video này (chữ trên hình, lời thoại)…"
                      className="py-1 pl-6 text-[11.5px]" />
+        </div>
+        <div className="ml-1 flex items-center gap-1 rounded-[2px] border border-[var(--color-focus)] px-1 py-0.5">
+          <span className="shrink-0 text-[10.5px] text-[var(--color-focus)]">Tra khung</span>
+          <TextInput value={frameIdx} inputMode="numeric" placeholder="frame_idx"
+                     onChange={(e) => setFrameIdx(e.target.value.replace(/\D/g, ""))}
+                     onKeyDown={(e) => e.key === "Enter" && lookup.mutate()}
+                     className="h-6 w-[84px] border-0 bg-transparent px-1 py-0 font-mono text-[11px]" />
+          <Button size="sm" variant="primary" onClick={() => lookup.mutate()} disabled={lookup.isPending}>
+            <Search size={11} />
+          </Button>
         </div>
         <Button size="sm" variant="ghost" className="ml-auto" onClick={() => close(null)}>
           <X size={14} />

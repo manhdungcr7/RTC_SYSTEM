@@ -7,7 +7,7 @@
  *   2. Nguồn của con số: đo trực tiếp / đúng keyframe / nội suy (khi nghi VFR)
  *   3. Keyframe gần nhất và độ lệch — để tự quyết nộp số đo tay hay số keyframe
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   ChevronLeft, ChevronRight, Copy, Layers, Pin, Plus, Search, SkipBack, SkipForward, X,
 } from "lucide-react";
@@ -15,7 +15,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { api, frameAtUrl, frameUrl, thumbUrl, videoUrl } from "../../api/client";
-import { Button, copyToClipboard, cx } from "../../components/ui";
+import { Button, Label, Pop, TextInput, copyToClipboard, cx } from "../../components/ui";
 import { useSession } from "../../stores/sessionStore";
 import { useSubmission } from "../../stores/submissionStore";
 import { useUi } from "../../stores/uiStore";
@@ -40,6 +40,9 @@ export function DetailOverlay() {
   const setCsvPreviewOpen = useUi((s) => s.setCsvPreviewOpen);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [stripMode, setStripMode] = useState<StripMode>("keyframe");
+  const [lookupFrameIdx, setLookupFrameIdx] = useState("");
+  const [otherVideo, setOtherVideo] = useState("");
+  const [otherFrameIdx, setOtherFrameIdx] = useState("");
 
   const session = useSession((s) => s.sessions[s.activeId]);
   const patch = useSession((s) => s.patch);
@@ -56,6 +59,17 @@ export function DetailOverlay() {
   });
 
   const { reading, stepFrames, seekTo } = useFrameIndex(videoRef, map);
+
+  const lookup = useMutation({
+    mutationFn: () => api.lookupFrame(hit!.video, Number(lookupFrameIdx)),
+    onSuccess: (found) => openDetail(found, [found]),
+    onError: (error: Error) => toast.error(error.message || "Không tra được khung hình này"),
+  });
+  const otherLookup = useMutation({
+    mutationFn: () => api.lookupFrame(otherVideo.trim(), otherFrameIdx.trim() ? Number(otherFrameIdx) : 1),
+    onSuccess: (found) => openDetail(found, [found]),
+    onError: (error: Error) => toast.error(error.message || "Không tra được khung hình này"),
+  });
 
   const idx = useMemo(() => hits.findIndex((h) => h.id === hit?.id), [hits, hit]);
   const go = (d: number) => {
@@ -155,6 +169,26 @@ export function DetailOverlay() {
           <Button size="sm" variant="ghost" onClick={() => { openWorkbench(hit.video); closeDetail(); }}>
             <Layers size={12} /> Mở cả video
           </Button>
+          <Pop width={250} align="end" trigger={
+            <Button size="sm" variant="default" title="Tra khung của video bất kỳ">
+              <Search size={12} /> Tra khung
+            </Button>
+          }>
+            <Label className="mb-1.5">Tra khung video khác</Label>
+            <div className="flex flex-col gap-1.5">
+              <TextInput value={otherVideo} onChange={(e) => setOtherVideo(e.target.value.trim())}
+                         placeholder="L21_V001" className="font-mono text-[12px]"
+                         onKeyDown={(e) => e.key === "Enter" && otherVideo && otherLookup.mutate()} />
+              <TextInput value={otherFrameIdx} inputMode="numeric"
+                         onChange={(e) => setOtherFrameIdx(e.target.value.replace(/\D/g, ""))}
+                         placeholder="frame_idx (bỏ trống = 1)" className="font-mono text-[12px]"
+                         onKeyDown={(e) => e.key === "Enter" && otherVideo && otherLookup.mutate()} />
+              <Button size="sm" variant="primary" onClick={() => otherLookup.mutate()}
+                      disabled={!otherVideo || otherLookup.isPending}>
+                <Search size={11} /> {otherLookup.isPending ? "Đang tra…" : "Mở khung"}
+              </Button>
+            </div>
+          </Pop>
           <Button size="sm" variant="ghost" onClick={() => closeDetail(true)} aria-label="Đóng">
             <X size={14} />
           </Button>
@@ -246,6 +280,22 @@ export function DetailOverlay() {
               <Button size="sm" variant="ghost" onClick={() => stepFrames(10)} title="Tiến 10 khung">
                 10<SkipForward size={11} />
               </Button>
+            </div>
+
+            <div className="mt-2 border-t border-[var(--color-line)] pt-2">
+              <div className="mb-1 text-[10.5px] font-medium text-[var(--color-focus)]">
+                Tra khung trong video này
+              </div>
+              <div className="flex gap-1">
+                <TextInput value={lookupFrameIdx} inputMode="numeric" placeholder="frame_idx"
+                           onChange={(e) => setLookupFrameIdx(e.target.value.replace(/\D/g, ""))}
+                           onKeyDown={(e) => e.key === "Enter" && lookupFrameIdx && lookup.mutate()}
+                           className="min-w-0 flex-1 px-2 py-1 font-mono text-[11px]" />
+                <Button size="sm" variant="primary" onClick={() => lookup.mutate()}
+                        disabled={!lookupFrameIdx || lookup.isPending}>
+                  <Search size={11} /> Tra
+                </Button>
+              </div>
             </div>
 
             {trake ? (
