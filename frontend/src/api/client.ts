@@ -2,7 +2,7 @@
  *  khi chạy thật — xem docker/nginx.conf). Ảnh/video đi thẳng /media/*. */
 import type {
   HealthStatus, SearchHit, SearchRequest, SearchResponse, TemporalRequest, TemporalResponse,
-  VideoMap, VideoSearchResponse,
+  TeamBatch, TeamBatchSummary, TeamCheckStatus, VideoMap, VideoSearchResponse,
 } from "../types/api";
 
 const API = "/api";
@@ -34,6 +34,44 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
     const text = await res.text().catch(() => "");
     throw new ApiError(text || `Máy chủ trả lỗi ${res.status}`, res.status);
   }
+  return res.json() as Promise<T>;
+}
+
+async function patch<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(`${API}${path}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body), signal,
+  });
+  if (!res.ok) throw new ApiError(await res.text(), res.status);
+  return res.json() as Promise<T>;
+}
+
+async function put<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(`${API}${path}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body), signal,
+  });
+  if (!res.ok) throw new ApiError(await res.text(), res.status);
+  return res.json() as Promise<T>;
+}
+
+async function postForm<T>(path: string, form: FormData): Promise<T> {
+  const res = await fetch(`${API}${path}`, { method: "POST", body: form });
+  if (!res.ok) throw new ApiError(await res.text(), res.status);
+  return res.json() as Promise<T>;
+}
+
+async function download(path: string, init?: RequestInit): Promise<Blob> {
+  const res = await fetch(`${API}${path}`, init);
+  if (!res.ok) throw new ApiError(await res.text(), res.status);
+  return res.blob();
+}
+
+async function del<T>(path: string): Promise<T> {
+  const res = await fetch(`${API}${path}`, { method: "DELETE" });
+  if (!res.ok) throw new ApiError(await res.text(), res.status);
   return res.json() as Promise<T>;
 }
 
@@ -95,6 +133,37 @@ export const api = {
     if (!res.ok) throw new ApiError(await res.text(), res.status);
     return res.blob();
   },
+
+  listTeamBatches: (signal?: AbortSignal) => get<TeamBatchSummary[]>("/team-submissions/batches", signal),
+  getTeamBatch: (batchId: string, signal?: AbortSignal) =>
+    get<TeamBatch>(`/team-submissions/batches/${encodeURIComponent(batchId)}`, signal),
+  deleteTeamBatch: (batchId: string) =>
+    del<{ id: string; question_count: number; deleted: true }>(`/team-submissions/batches/${encodeURIComponent(batchId)}`),
+  importQuestions: (file: File, replaceExisting = false) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("replace_existing", String(replaceExisting));
+    return postForm<{ imported: boolean; batch: TeamBatch }>("/team-submissions/batches/import-questions", form);
+  },
+  shareTeamAnswer: (batchId: string, questionNumber: number, memberId: string,
+                    data: { display_name: string; csv_text: string; note: string }) =>
+    put(`/team-submissions/batches/${encodeURIComponent(batchId)}/questions/${questionNumber}/answers/${encodeURIComponent(memberId)}`, data),
+  updateTeamAnswer: (batchId: string, questionNumber: number, memberId: string,
+                     data: { actor_member_id: string; actor_display_name: string;
+                             note?: string; check_status?: TeamCheckStatus }) =>
+    patch(`/team-submissions/batches/${encodeURIComponent(batchId)}/questions/${questionNumber}/answers/${encodeURIComponent(memberId)}`, data),
+  chooseTeamAnswer: (batchId: string, questionNumber: number,
+                     data: { member_id: string; actor_member_id: string; actor_display_name: string }) =>
+    put(`/team-submissions/batches/${encodeURIComponent(batchId)}/questions/${questionNumber}/choice`, data),
+  teamBackup: (batchId: string) => download(`/team-submissions/batches/${encodeURIComponent(batchId)}/backup`),
+  restoreTeamBackup: (file: File, replaceExisting = false) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("replace_existing", String(replaceExisting));
+    return postForm<{ batch: TeamBatch }>("/team-submissions/restore", form);
+  },
+  exportTeamSubmission: (batchId: string) =>
+    download(`/team-submissions/batches/${encodeURIComponent(batchId)}/export`, { method: "POST" }),
 };
 
 /** Ảnh nhỏ cho lưới kết quả (bản 320px tiền sinh — nhẹ hơn ~40%). */

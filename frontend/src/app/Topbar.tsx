@@ -4,8 +4,8 @@
  *  người dùng phải thấy NGAY và biết chính xác cái gì còn dùng được — chứ không
  *  ngồi đoán vì sao tìm mãi không ra. */
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { FileSearch, Keyboard, Plug, Plus, Search, X } from "lucide-react";
-import { useState } from "react";
+import { FileSearch, Keyboard, Plug, Plus, Save, Search, UserRound, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -13,6 +13,7 @@ import { api } from "../api/client";
 import { Button, Label, Pop, StatusDot, TextInput, cx } from "../components/ui";
 import { useSession } from "../stores/sessionStore";
 import { useSubmission } from "../stores/submissionStore";
+import { isValidMemberId, useTeamIdentity } from "../stores/teamIdentityStore";
 import { useUi } from "../stores/uiStore";
 
 /** Tra tay 1 khung hình theo video + frame_idx — không cần gõ mô tả rồi tìm,
@@ -134,6 +135,52 @@ function HealthLights() {
   );
 }
 
+function TeamIdentityPopover() {
+  const displayName = useTeamIdentity((s) => s.displayName);
+  const memberId = useTeamIdentity((s) => s.memberId);
+  const setIdentity = useTeamIdentity((s) => s.setIdentity);
+  const [nameDraft, setNameDraft] = useState(displayName);
+  const [idDraft, setIdDraft] = useState(memberId);
+
+  useEffect(() => {
+    setNameDraft(displayName);
+    setIdDraft(memberId);
+  }, [displayName, memberId]);
+
+  const save = () => {
+    const cleanName = nameDraft.trim();
+    const cleanId = idDraft.trim().toLowerCase();
+    if (!cleanName) { toast.error("Nhập tên hiển thị trước khi chia sẻ."); return; }
+    if (!isValidMemberId(cleanId)) {
+      toast.error("Member ID dài 4–64 ký tự, chỉ gồm a-z, 0-9, _ hoặc -.");
+      return;
+    }
+    setIdentity(cleanName, cleanId);
+    toast.success("Đã lưu danh tính trên máy này.");
+  };
+
+  return (
+    <Pop width={280} align="end" trigger={
+      <Button size="sm" variant="ghost" title="Cấu hình tên và Member ID để chia sẻ bài nộp">
+        <UserRound size={12} />
+        <span className="max-w-[78px] truncate">{displayName || "Danh tính"}</span>
+      </Button>
+    }>
+      <Label>Danh tính chia sẻ</Label>
+      <p className="mb-2 text-[10.5px] leading-snug text-[var(--color-fg-mute)]">
+        Lưu một lần trên máy này. Khi đổi máy, nhập lại đúng Member ID để cập nhật đúng bài đã chia sẻ.
+      </p>
+      <div className="flex flex-col gap-1.5">
+        <TextInput value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} placeholder="Tên hiển thị"
+                   className="text-[11.5px]" />
+        <TextInput value={idDraft} onChange={(e) => setIdDraft(e.target.value.toLowerCase())}
+                   placeholder="Member ID, ví dụ dung-k9f3" className="font-mono text-[11.5px]" />
+        <Button size="sm" variant="primary" onClick={save}><Save size={11} /> Lưu danh tính</Button>
+      </div>
+    </Pop>
+  );
+}
+
 export function Topbar() {
   const setShortcutsOpen = useUi((s) => s.setShortcutsOpen);
   const setConnectionOpen = useUi((s) => s.setConnectionOpen);
@@ -164,6 +211,7 @@ export function Topbar() {
             nháp {totalRows}
           </span>
         )}
+        <TeamIdentityPopover />
         <HealthLights />
         <FrameLookup />
         <Button size="sm" variant="ghost" onClick={() => setCsvPreviewOpen(true)}

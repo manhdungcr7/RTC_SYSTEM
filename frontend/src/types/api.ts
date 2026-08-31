@@ -196,3 +196,54 @@ export interface HealthStatus {
   encoder?: { ok: boolean; url: string | null; latency_ms?: number; error?: string; note?: string };
   cache?: Record<string, { hits: number; misses: number; hit_rate: number }>;
 }
+
+// ==================== Bang chia se bai nop ====================
+
+export type TeamCheckStatus = "unchecked" | "checked" | "needs_rework";
+
+export interface TeamIdentity {
+  displayName: string;
+  memberId: string;
+}
+
+export interface TeamSharedAnswer {
+  batch_id: string;
+  question_number: number;
+  member_id: string;
+  display_name: string;
+  csv_text: string;
+  note: string;
+  check_status: TeamCheckStatus;
+  checked_by_member_id: string | null;
+  checked_by_name: string | null;
+  checked_at: string | null;
+  updated_at: string;
+}
+
+export interface TeamQuestion {
+  batch_id: string;
+  number: number;
+  filename: string;
+  kind: QueryKind;
+  description: string;
+  trake_event_count: number | null;
+  answers: TeamSharedAnswer[];
+  selected_member_id: string | null;
+  chosen_by_member_id?: string | null;
+  chosen_by_name?: string | null;
+  choice_updated_at?: string | null;
+}
+
+export interface TeamBatch {
+  id: string;
+  question_count: number;
+  source_fingerprint: string;
+  created_at: string;
+  questions: TeamQuestion[];
+}
+
+export interface TeamBatchSummary {
+  id: string;
+  question_count: number;
+  created_at: string;
+}

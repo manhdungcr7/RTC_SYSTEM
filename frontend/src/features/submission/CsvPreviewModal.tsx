@@ -9,7 +9,7 @@
  * GẦN NHẤT, giống hệt cách hệ thống sẽ hiểu file này lúc nộp.
  */
 import { AlertTriangle, FileUp, Loader2 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api } from "../../api/client";
 import { Modal, Select } from "../../components/ui";
@@ -65,7 +65,12 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (x: T) => Promise<R
   return out;
 }
 
-export function CsvPreviewModal({ open, onOpenChange }: { open: boolean; onOpenChange: (b: boolean) => void }) {
+export function CsvPreviewModal({ open, onOpenChange, source }: {
+  open: boolean;
+  onOpenChange: (b: boolean) => void;
+  /** CSV từ bảng chia sẻ; null vẫn giữ nguyên luồng chọn file local cũ. */
+  source?: { name: string; kind: QueryKind; text: string } | null;
+}) {
   const openDetail = useUi((s) => s.openDetail);
   const setDetailReturnToCsv = useUi((s) => s.setDetailReturnToCsv);
   const [kind, setKind] = useState<QueryKind>("kis");
@@ -75,18 +80,18 @@ export function CsvPreviewModal({ open, onOpenChange }: { open: boolean; onOpenC
   const [parseError, setParseError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const onFile = async (file: File) => {
-    setFileName(file.name);
+  const loadText = useCallback(async (text: string, name: string, targetKind: QueryKind) => {
+    setFileName(name);
+    setKind(targetKind);
     setRows(null);
     setParseError(null);
-    const text = await file.text();
     const lines = parseCsv(text);
     if (lines.length === 0) { setParseError("File rỗng hoặc không đọc được dòng nào."); return; }
 
-    const minCols = kind === "trake" ? 3 : 2;
+    const minCols = targetKind === "trake" ? 3 : 2;
     const bad = lines.findIndex((l) => l.length < minCols);
     if (bad >= 0) {
-      setParseError(`Dòng ${bad + 1} chỉ có ${lines[bad].length} cột, cần ít nhất ${minCols} cho loại ${kind.toUpperCase()}.`);
+      setParseError(`Dòng ${bad + 1} chỉ có ${lines[bad].length} cột, cần ít nhất ${minCols} cho loại ${targetKind.toUpperCase()}.`);
       return;
     }
 
@@ -94,10 +99,10 @@ export function CsvPreviewModal({ open, onOpenChange }: { open: boolean; onOpenC
     try {
       const parsed = lines.map((cols) => {
         const video = cols[0].trim();
-        if (kind === "qa") {
+        if (targetKind === "qa") {
           return { video, frameStrs: [cols[1]], answer: cols[2] ?? "" };
         }
-        if (kind === "trake") {
+        if (targetKind === "trake") {
           return { video, frameStrs: cols.slice(1), answer: null as string | null };
         }
         return { video, frameStrs: [cols[1]], answer: null as string | null };
@@ -125,7 +130,15 @@ export function CsvPreviewModal({ open, onOpenChange }: { open: boolean; onOpenC
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const onFile = async (file: File) => {
+    await loadText(await file.text(), file.name, kind);
   };
+
+  useEffect(() => {
+    if (open && source) void loadText(source.text, source.name, source.kind);
+  }, [loadText, open, source]);
 
   return (
     <Modal open={open} onOpenChange={onOpenChange} title="Xem trước file CSV bằng ảnh" wide>
@@ -167,7 +180,7 @@ export function CsvPreviewModal({ open, onOpenChange }: { open: boolean; onOpenC
                   </span>
                   <span className="font-mono text-[12px]">{r.video}</span>
                   {r.answer != null && (
-                    <span className="ml-auto text-[11px] text-[var(--color-fg-dim)]">
+                    <span className="ml-auto text-[15px] text-[var(--color-fg-dim)]">
                       đáp án: <b>{r.answer || "(trống)"}</b>
                     </span>
                   )}

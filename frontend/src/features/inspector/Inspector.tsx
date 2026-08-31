@@ -19,6 +19,7 @@ import { useSession } from "../../stores/sessionStore";
 import type { PinnedFrame } from "../../stores/sessionStore";
 import { framesPerRow, useSubmission } from "../../stores/submissionStore";
 import { useUi } from "../../stores/uiStore";
+import { TeamSubmissionPanel } from "../teamSubmission/TeamSubmissionPanel";
 import { BRANCHES, BRANCH_COLOR } from "../../types/api";
 import type { SearchHit } from "../../types/api";
 
@@ -258,6 +259,7 @@ const TABS = [
   { key: "explain", label: "Giải thích" },
   { key: "pins", label: "Ghim" },
   { key: "submit", label: "Nộp bài" },
+  { key: "share", label: "Chia sẻ" },
   { key: "notes", label: "Ghi chú" },
 ] as const;
 
@@ -286,10 +288,11 @@ export function Inspector({ current, submitPanel }: {
           </button>
         ))}
       </div>
-      <div className={cx("min-h-0 flex-1", tab === "submit" ? "overflow-hidden" : "overflow-y-auto")}>
+      <div className={cx("min-h-0 flex-1", (tab === "submit" || tab === "share") ? "overflow-hidden" : "overflow-y-auto")}>
         {tab === "explain" && <WhyPanel hit={current} />}
         {tab === "pins" && <PinboardPanel />}
         {tab === "submit" && submitPanel}
+        {tab === "share" && <TeamSubmissionPanel />}
         {tab === "notes" && <NotesPanel />}
       </div>
     </div>

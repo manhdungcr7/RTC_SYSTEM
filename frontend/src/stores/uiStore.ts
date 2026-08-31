@@ -3,9 +3,9 @@
  *  bền, cái gì chỉ là "đang mở panel nào" thì không. */
 import { create } from "zustand";
 
-import type { SearchHit } from "../types/api";
+import type { QueryKind, SearchHit } from "../types/api";
 
-export type InspectorTab = "explain" | "pins" | "submit" | "notes";
+export type InspectorTab = "explain" | "pins" | "submit" | "share" | "notes";
 export type ResultView = "grid" | "byVideo" | "compare";
 
 interface UiState {
@@ -61,6 +61,7 @@ interface UiState {
   shortcutsOpen: boolean;
   paletteOpen: boolean;
   csvPreviewOpen: boolean;
+  sharedCsvPreview: { name: string; kind: QueryKind; text: string } | null;
   detailReturnToCsv: boolean;
 
   toggleLeft: () => void;
@@ -90,6 +91,7 @@ interface UiState {
   setShortcutsOpen: (b: boolean) => void;
   setPaletteOpen: (b: boolean) => void;
   setCsvPreviewOpen: (b: boolean) => void;
+  setSharedCsvPreview: (source: { name: string; kind: QueryKind; text: string } | null) => void;
   setDetailReturnToCsv: (b: boolean) => void;
 }
 
@@ -114,6 +116,7 @@ export const useUi = create<UiState>((set) => ({
   shortcutsOpen: false,
   paletteOpen: false,
   csvPreviewOpen: false,
+  sharedCsvPreview: null,
   detailReturnToCsv: false,
 
   toggleLeft: () => set((s) => ({ leftOpen: !s.leftOpen })),
@@ -185,5 +188,6 @@ export const useUi = create<UiState>((set) => ({
   setShortcutsOpen: (b) => set({ shortcutsOpen: b }),
   setPaletteOpen: (b) => set({ paletteOpen: b }),
   setCsvPreviewOpen: (b) => set({ csvPreviewOpen: b }),
+  setSharedCsvPreview: (sharedCsvPreview) => set({ sharedCsvPreview, csvPreviewOpen: sharedCsvPreview ? true : false }),
   setDetailReturnToCsv: (b) => set({ detailReturnToCsv: b }),
 }));

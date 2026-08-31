@@ -74,6 +74,9 @@ interface Store {
   removeRow: (name: string, rowId: string) => void;
   duplicateRow: (name: string, rowId: string) => void;
   reorderRows: (name: string, from: number, to: number) => void;
+  /** Chi duoc goi sau khi nguoi dung bam "Nhan vao ban nhap" tu bang chung. */
+  replaceFileFromShared: (name: string, kind: QueryKind, nEvents: number,
+                          rows: Omit<DraftRow, "id">[]) => void;
   bumpSubmitCount: (name: string) => void;
 }
 
@@ -212,6 +215,28 @@ export const useSubmission = create<Store>()(
           const [m] = rows.splice(from, 1);
           rows.splice(to, 0, m);
           return { files: { ...s.files, [name]: { ...f, rows } } };
+        }),
+
+      replaceFileFromShared: (name, kind, nEvents, rows) =>
+        set((s) => {
+          const old = s.files[name];
+          const want = kind === "trake" ? Math.max(1, nEvents) : 1;
+          const safeRows = rows.slice(0, MAX_ROWS).map((row) => {
+            const frames = row.frames.slice(0, want);
+            while (frames.length < want) frames.push("");
+            return { ...row, id: rid(), frames };
+          });
+          const file: DraftFile = {
+            name, kind, nEvents: kind === "trake" ? want : 4,
+            rows: safeRows.length ? safeRows : [emptyRow(want)],
+            // So lan nop la thong tin cua may local, khong lay theo bai chia se.
+            submitCount: old?.submitCount ?? 0,
+          };
+          return {
+            files: { ...s.files, [name]: file },
+            order: old ? s.order : [...s.order, name],
+            activeName: name,
+          };
         }),
 
       bumpSubmitCount: (name) =>
