@@ -132,7 +132,10 @@ function AnswerCard({ batchId, question, answer }: { batchId: string; question: 
                 className="mt-1 min-h-[40px] text-[12px]" />
       <div className="mt-1.5 flex flex-wrap gap-1">
         <Button size="sm" variant="ghost"
-                onClick={() => setSharedCsvPreview({ name: question.filename, kind: question.kind, text: answer.csv_text })}>
+                onClick={() => setSharedCsvPreview({
+                  name: question.filename, kind: question.kind, text: answer.csv_text,
+                  question: question.description,
+                })}>
           <FileText size={11} /> Xem CSV
         </Button>
         <Button size="sm" variant="ghost" onClick={receive}><Download size={11} /> Nhận</Button>

@@ -8,8 +8,9 @@
  * lúc nào cũng đúng ngay 1 keyframe đã lập chỉ mục, mỗi ô số được tra ra khung
  * GẦN NHẤT, giống hệt cách hệ thống sẽ hiểu file này lúc nộp.
  */
-import { AlertTriangle, FileUp, Loader2 } from "lucide-react";
+import { AlertTriangle, Copy, FileUp, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { api } from "../../api/client";
 import { Modal, Select } from "../../components/ui";
@@ -50,6 +51,22 @@ interface PreviewRow {
   answer: string | null;
 }
 
+async function copyText(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const input = document.createElement("textarea");
+  input.value = text;
+  input.style.position = "fixed";
+  input.style.opacity = "0";
+  document.body.append(input);
+  input.select();
+  const copied = document.execCommand("copy");
+  input.remove();
+  if (!copied) throw new Error("Trình duyệt không cho sao chép.");
+}
+
 /** Chạy tối đa `limit` lookup cùng lúc — 1 file TRAKE 100 dòng x nhiều sự
  *  kiện có thể ra hàng trăm khung, bắn hết 1 lượt dễ nghẽn máy encode/BE. */
 async function mapLimit<T, R>(items: T[], limit: number, fn: (x: T) => Promise<R>): Promise<R[]> {
@@ -69,7 +86,7 @@ export function CsvPreviewModal({ open, onOpenChange, source }: {
   open: boolean;
   onOpenChange: (b: boolean) => void;
   /** CSV từ bảng chia sẻ; null vẫn giữ nguyên luồng chọn file local cũ. */
-  source?: { name: string; kind: QueryKind; text: string } | null;
+  source?: { name: string; kind: QueryKind; text: string; question?: string } | null;
 }) {
   const openDetail = useUi((s) => s.openDetail);
   const setDetailReturnToCsv = useUi((s) => s.setDetailReturnToCsv);
@@ -140,6 +157,16 @@ export function CsvPreviewModal({ open, onOpenChange, source }: {
     if (open && source) void loadText(source.text, source.name, source.kind);
   }, [loadText, open, source]);
 
+  const copyFileName = async () => {
+    if (!fileName) return;
+    try {
+      await copyText(fileName);
+      toast.success("Đã sao chép tên file.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không sao chép được tên file.");
+    }
+  };
+
   return (
     <Modal open={open} onOpenChange={onOpenChange} title="Xem trước file CSV bằng ảnh" wide>
       <div className="flex flex-col gap-3">
@@ -147,6 +174,12 @@ export function CsvPreviewModal({ open, onOpenChange, source }: {
           Gửi lại đúng file .csv sắp nộp — mỗi dòng hiện ra thành ảnh THEO ĐÚNG
           THỨ TỰ trong file, để soát bằng mắt trước khi nộp thật lên Codabench.
         </p>
+        {source?.question && (
+          <section className="rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-panel-2)] px-3 py-2">
+            <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-focus)]">Câu hỏi</div>
+            <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-[var(--color-fg-dim)]">{source.question}</p>
+          </section>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           <Select value={kind} onChange={(e) => setKind(e.target.value as QueryKind)}
                   className="w-[100px] px-1.5 py-1 text-[12px]">
@@ -160,7 +193,12 @@ export function CsvPreviewModal({ open, onOpenChange, source }: {
           </button>
           <input ref={inputRef} type="file" accept=".csv" className="hidden"
                  onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ""; }} />
-          {fileName && <span className="font-mono text-[11px] text-[var(--color-fg-dim)]">{fileName}</span>}
+          {fileName && (
+            <button type="button" onClick={() => void copyFileName()} title="Sao chép tên file"
+                    className="flex items-center gap-1 font-mono text-[11px] text-[var(--color-fg-dim)] hover:text-[var(--color-focus)]">
+              {fileName} <Copy size={11} />
+            </button>
+          )}
           {loading && <Loader2 size={13} className="animate-spin text-[var(--color-fg-mute)]" />}
         </div>
 

@@ -61,7 +61,7 @@ interface UiState {
   shortcutsOpen: boolean;
   paletteOpen: boolean;
   csvPreviewOpen: boolean;
-  sharedCsvPreview: { name: string; kind: QueryKind; text: string } | null;
+  sharedCsvPreview: { name: string; kind: QueryKind; text: string; question?: string } | null;
   detailReturnToCsv: boolean;
 
   toggleLeft: () => void;
@@ -91,7 +91,7 @@ interface UiState {
   setShortcutsOpen: (b: boolean) => void;
   setPaletteOpen: (b: boolean) => void;
   setCsvPreviewOpen: (b: boolean) => void;
-  setSharedCsvPreview: (source: { name: string; kind: QueryKind; text: string } | null) => void;
+  setSharedCsvPreview: (source: { name: string; kind: QueryKind; text: string; question?: string } | null) => void;
   setDetailReturnToCsv: (b: boolean) => void;
 }
 
