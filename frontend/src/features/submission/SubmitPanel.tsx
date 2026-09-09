@@ -15,7 +15,7 @@ import { DndContext, closestCenter } from "@dnd-kit/core";
 import type { DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Check, Copy, FileDown, GripVertical, Plus, Share2, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
@@ -129,7 +129,16 @@ export function SubmitPanel() {
 
   const [newName, setNewName] = useState("query-p1-1-kis");
   const [newKind, setNewKind] = useState<QueryKind>("kis");
+  const [quickQuestion, setQuickQuestion] = useState("");
   const [shareNote, setShareNote] = useState("");
+
+  // Chi tai danh sach de da import de tao nhanh file nhap. Khong dong bo bat ky
+  // dap an chia se nao vao localStorage; nguoi dung van phai bam Nhan neu can.
+  const teamBoard = useQuery({
+    queryKey: ["team-batch", teamBatchId],
+    queryFn: ({ signal }) => api.getTeamBatch(teamBatchId!, signal),
+    enabled: Boolean(teamBatchId),
+  });
 
   useEffect(() => {
     if (pathname !== "/temporal") return;
@@ -185,6 +194,22 @@ export function SubmitPanel() {
     toast.success(`Đã tải ${f.name}.csv`);
   };
 
+  const selectImportedQuestion = (filename: string) => {
+    setQuickQuestion("");
+    const question = teamBoard.data?.questions.find((item) => item.filename === filename);
+    if (!question) return;
+    const localName = question.filename.replace(/\.csv$/i, "");
+    setNewName(localName);
+    setNewKind(question.kind);
+    if (files[localName]) {
+      setActiveFile(localName);
+      toast.message(`Đã mở bản nháp ${question.filename}.`);
+      return;
+    }
+    createFile(localName, question.kind, question.kind === "trake" ? (question.trake_event_count ?? 4) : 4);
+    toast.success(`Đã tạo bản nháp câu ${question.number}: ${question.filename}.`);
+  };
+
   const share = useMutation({
     mutationFn: async () => {
       if (!file) throw new Error("Chưa chọn file nộp bài.");
@@ -223,6 +248,20 @@ export function SubmitPanel() {
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
       <div className="flex flex-col gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-line)] p-2">
         <Label className="mb-0">Tạo file kết quả</Label>
+        {teamBatchId && (
+          <Select value={quickQuestion} onChange={(event) => selectImportedQuestion(event.target.value)}
+                  disabled={teamBoard.isLoading || !teamBoard.data}
+                  className="w-full px-1.5 py-1 text-[11px]">
+            <option value="">
+              {teamBoard.isLoading ? "Đang tải danh sách câu hỏi…" : "Chọn câu hỏi đã import để tạo nhanh…"}
+            </option>
+            {teamBoard.data?.questions.map((question) => (
+              <option key={question.number} value={question.filename}>
+                #{question.number} · {question.kind.toUpperCase()} · {question.filename}
+              </option>
+            ))}
+          </Select>
+        )}
         <div className="flex gap-1">
           <TextInput value={newName} onChange={(e) => setNewName(e.target.value)}
                      placeholder="query-p1-1-kis"
@@ -243,7 +282,9 @@ export function SubmitPanel() {
           </Button>
         </div>
         <p className="text-[10px] leading-snug text-[var(--color-fg-mute)]">
-          Tên file phải trùng tên câu truy vấn của BTC, không kèm đuôi .csv
+          {teamBatchId
+            ? "Chọn câu hỏi bên trên để tạo/mở nháp đúng tên; hoặc vẫn có thể nhập tay."
+            : "Tên file phải trùng tên câu truy vấn của BTC, không kèm đuôi .csv"}
         </p>
       </div>
 
@@ -375,7 +416,7 @@ export function SubmitPanel() {
             <FileDown size={11} /> Tải {file.name}.csv
           </Button>
           <Pop width={300} align="end" trigger={
-            <Button size="sm" variant="ghost" disabled={check.errors.length > 0 || share.isPending}>
+            <Button size="sm" variant="success" disabled={check.errors.length > 0 || share.isPending}>
               <Share2 size={11} /> Chia sẻ bài nộp
             </Button>
           }>

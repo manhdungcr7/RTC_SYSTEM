@@ -152,9 +152,17 @@ export const api = {
                      data: { actor_member_id: string; actor_display_name: string;
                              note?: string; check_status?: TeamCheckStatus }) =>
     patch(`/team-submissions/batches/${encodeURIComponent(batchId)}/questions/${questionNumber}/answers/${encodeURIComponent(memberId)}`, data),
+  deleteTeamAnswer: (batchId: string, questionNumber: number, memberId: string) =>
+    del<{ batch_id: string; question_number: number; member_id: string; deleted: true }>(
+      `/team-submissions/batches/${encodeURIComponent(batchId)}/questions/${questionNumber}/answers/${encodeURIComponent(memberId)}`,
+    ),
   chooseTeamAnswer: (batchId: string, questionNumber: number,
                      data: { member_id: string; actor_member_id: string; actor_display_name: string }) =>
     put(`/team-submissions/batches/${encodeURIComponent(batchId)}/questions/${questionNumber}/choice`, data),
+  clearTeamChoice: (batchId: string, questionNumber: number) =>
+    del<{ question_number: number; cleared: boolean }>(
+      `/team-submissions/batches/${encodeURIComponent(batchId)}/questions/${questionNumber}/choice`,
+    ),
   teamBackup: (batchId: string) => download(`/team-submissions/batches/${encodeURIComponent(batchId)}/backup`),
   restoreTeamBackup: (file: File, replaceExisting = false) => {
     const form = new FormData();

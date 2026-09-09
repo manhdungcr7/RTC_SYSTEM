@@ -1,6 +1,6 @@
 /** Bang chia se bai nop: doc server, khong tu dong dong bo ban nhap local. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArchiveRestore, Check, ChevronDown, ChevronRight, Circle, Download, FileText, Trash2, Upload, Users, X } from "lucide-react";
+import { ArchiveRestore, Check, ChevronDown, ChevronRight, Download, FileText, FileUp, Trash2, Upload, Users, X, Circle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -71,6 +71,7 @@ function AnswerCard({ batchId, question, answer }: { batchId: string; question: 
   const [note, setNote] = useState(answer.note);
   const ready = identityReady(displayName, memberId);
   const invalidates = () => qc.invalidateQueries({ queryKey: ["team-batch", batchId] });
+  const selected = question.selected_member_id === answer.member_id;
 
   useEffect(() => { setNote(answer.note); }, [answer.note]);
 
@@ -88,6 +89,22 @@ function AnswerCard({ batchId, question, answer }: { batchId: string; question: 
     }),
     onSuccess: () => { invalidates(); toast.success(`Đã chọn đáp án của ${answer.display_name}.`); },
     onError: (error: Error) => toast.error(error.message),
+  });
+  const clearChoice = useMutation({
+    mutationFn: () => api.clearTeamChoice(batchId, question.number),
+    onSuccess: () => {
+      invalidates();
+      toast.success(`Đã bỏ chọn nộp cho câu ${question.number}.`);
+    },
+    onError: (error: Error) => toast.error(error.message || "Không bỏ chọn được đáp án nộp."),
+  });
+  const remove = useMutation({
+    mutationFn: () => api.deleteTeamAnswer(batchId, question.number, answer.member_id),
+    onSuccess: () => {
+      invalidates();
+      toast.success(`Đã xóa bài chia sẻ của ${answer.display_name}.`);
+    },
+    onError: (error: Error) => toast.error(error.message || "Không xóa được bài chia sẻ."),
   });
 
   const receive = () => {
@@ -112,8 +129,24 @@ function AnswerCard({ batchId, question, answer }: { batchId: string; question: 
     if (!ready) { toast.error("Hãy cấu hình Danh tính ở góc trên phải trước."); return; }
     patch.mutate({ check_status });
   };
+  const deleteAnswer = () => {
+    if (!window.confirm(
+      `Xóa bài chia sẻ của ${answer.display_name} ở câu ${question.number}? Thao tác này không xóa bản nháp local.`,
+    )) return;
+    remove.mutate();
+  };
 
-  const selected = question.selected_member_id === answer.member_id;
+  const toggleChoice = () => {
+    if (selected) {
+      clearChoice.mutate();
+      return;
+    }
+    if (!ready) {
+      toast.error("Hãy cấu hình Danh tính ở góc trên phải trước khi chọn nộp.");
+      return;
+    }
+    choose.mutate();
+  };
   return (
     <div className="rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg)] p-2">
       <div className="flex items-center gap-1.5">
@@ -145,8 +178,13 @@ function AnswerCard({ batchId, question, answer }: { batchId: string; question: 
                 onClick={() => setStatus("needs_rework")} className="text-[var(--color-err)]"><X size={11} /></Button>
         <Button size="sm" variant="ghost" title="Chưa kiểm tra" disabled={!ready || patch.isPending}
                 onClick={() => setStatus("unchecked")}><Circle size={10} /></Button>
-        <Button size="sm" variant={selected ? "primary" : "ghost"} disabled={!ready || choose.isPending}
-                onClick={() => choose.mutate()}>Chọn nộp</Button>
+        <Button size="sm" variant={selected ? "primary" : "ghost"}
+                disabled={selected ? clearChoice.isPending : choose.isPending}
+                onClick={toggleChoice}>{selected ? "Bỏ chọn nộp" : "Chọn nộp"}</Button>
+        <Button size="sm" variant="ghost" title="Xóa bài chia sẻ" disabled={remove.isPending}
+                onClick={deleteAnswer} className="text-[var(--color-err)] hover:text-[var(--color-err)]">
+          <Trash2 size={11} />
+        </Button>
       </div>
     </div>
   );
@@ -156,7 +194,14 @@ function QuestionRow({ batchId, question }: { batchId: string; question: TeamQue
   const [open, setOpen] = useState(false);
   const [descriptionOpen, setDescriptionOpen] = useState(false);
   const count = question.answers.length;
-  const uncheckedCount = question.answers.filter((answer) => answer.check_status === "unchecked").length;
+  const selectedAnswer = question.answers.find((answer) => answer.member_id === question.selected_member_id);
+  const rowStatus = count === 0
+    ? "empty"
+    : !selectedAnswer || selectedAnswer.check_status === "unchecked"
+      ? "unchecked"
+      : selectedAnswer.check_status === "needs_rework"
+        ? "needs_rework"
+        : null;
   return (
     <section className="border-b border-[var(--color-line)]">
       <div className="flex items-center gap-1.5 px-3 py-2">
@@ -164,13 +209,25 @@ function QuestionRow({ batchId, question }: { batchId: string; question: TeamQue
           {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
           <span className="font-mono text-[10.5px] text-[var(--color-fg-mute)]">#{question.number}</span>
           <span className="min-w-0 flex-1 truncate font-mono text-[10.5px]">{question.filename}</span>
-          {uncheckedCount > 0 && (
-            <span className="shrink-0 rounded border border-[color-mix(in_srgb,var(--color-err)_70%,var(--color-line))] bg-[color-mix(in_srgb,var(--color-err)_14%,transparent)] px-1.5 py-0.5 text-[11px] font-bold tracking-wide text-[var(--color-err)]">
-              CẦN CHECK
-            </span>
-          )}
-          <span className="rounded border border-[var(--color-line)] px-1 py-0.5 text-[9px] text-[var(--color-fg-dim)]">{question.kind.toUpperCase()}</span>
-          <span className="font-mono text-[12px] text-[var(--color-fg-mute)]">{count}</span>
+          <span className="flex w-[126px] shrink-0 justify-end">
+            {rowStatus === "empty" ? (
+              <span className="rounded border border-[var(--color-line)] bg-[var(--color-panel-2)] px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-[var(--color-fg-mute)]">
+                CHƯA CÓ ĐÁP ÁN
+              </span>
+            ) : rowStatus === "unchecked" ? (
+              <span title="Chưa chọn đáp án nộp, hoặc đáp án đang chọn chưa được kiểm tra"
+                    className="rounded border border-[var(--color-focus)] bg-[color-mix(in_srgb,var(--color-focus)_18%,transparent)] px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-[var(--color-focus)]">
+                CHƯA KIỂM TRA
+              </span>
+            ) : rowStatus === "needs_rework" ? (
+              <span title="Đáp án đang được chọn nộp đã bị đánh dấu cần làm lại"
+                    className="rounded border border-[color-mix(in_srgb,var(--color-err)_70%,var(--color-line))] bg-[color-mix(in_srgb,var(--color-err)_14%,transparent)] px-1.5 py-0.5 text-[11px] font-bold tracking-wide text-[var(--color-err)]">
+                LÀM LẠI
+              </span>
+            ) : null}
+          </span>
+          <span className="w-[46px] shrink-0 rounded border border-[var(--color-line)] px-1 py-0.5 text-center text-[9px] text-[var(--color-fg-dim)]">{question.kind.toUpperCase()}</span>
+          <span className="w-[18px] shrink-0 text-right font-mono text-[12px] text-[var(--color-fg-mute)]">{count}</span>
         </button>
         <button type="button" onClick={() => setDescriptionOpen((value) => !value)} title="Xem mô tả câu hỏi"
                 className="text-[10px] text-[var(--color-focus)] hover:underline">đề</button>
@@ -192,8 +249,10 @@ export function TeamSubmissionPanel() {
   const activeBatchId = useTeamBoard((s) => s.activeBatchId);
   const setActiveBatchId = useTeamBoard((s) => s.setActiveBatchId);
   const importRef = useRef<HTMLInputElement>(null);
+  const updateCsvRef = useRef<HTMLInputElement>(null);
   const restoreRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [updatingCsv, setUpdatingCsv] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const batches = useQuery({ queryKey: ["team-batches"], queryFn: ({ signal }) => api.listTeamBatches(signal), refetchInterval: 4_000 });
@@ -253,6 +312,72 @@ export function TeamSubmissionPanel() {
     try { saveBlob(await api.exportTeamSubmission(currentBatchId), "submission.zip"); }
     catch (error) { toast.error(error instanceof Error ? error.message : "Chưa export được gói nộp."); }
   };
+  const updateSharedCsv = async (files: File[]) => {
+    if (!currentBatchId) { toast.error("Chưa có bảng đề để cập nhật."); return; }
+    if (!files.length) return;
+    const displayName = useTeamIdentity.getState().displayName;
+    const memberId = useTeamIdentity.getState().memberId;
+    if (!identityReady(displayName, memberId)) {
+      toast.error("Hãy cấu hình Danh tính ở góc trên phải trước khi cập nhật CSV.");
+      return;
+    }
+    setUpdatingCsv(true);
+    try {
+      const currentBoard = board.data ?? await api.getTeamBatch(currentBatchId);
+      const questionsByFilename = new Map(
+        currentBoard.questions.map((question) => [question.filename.toLowerCase(), question]),
+      );
+      const seenFilenames = new Set<string>();
+      const uploads: { file: File; question: TeamQuestion }[] = [];
+      const failures: string[] = [];
+      for (const file of files) {
+        const filename = file.name.toLowerCase();
+        if (seenFilenames.has(filename)) {
+          failures.push(`${file.name} bị chọn trùng`);
+          continue;
+        }
+        seenFilenames.add(filename);
+        const question = questionsByFilename.get(filename);
+        if (!question) {
+          failures.push(`${file.name} không thuộc batch ${currentBatchId}`);
+          continue;
+        }
+        uploads.push({ file, question });
+      }
+      if (!uploads.length) {
+        throw new Error(failures.join("; "));
+      }
+      const existingCount = uploads.filter(({ question }) =>
+        question.answers.some((answer) => answer.member_id === memberId.trim().toLowerCase()),
+      ).length;
+      if (existingCount > 0 && !window.confirm(
+        `${existingCount} file sẽ thay bài chia sẻ hiện tại của bạn và đưa trạng thái về chưa kiểm tra. Tiếp tục?`,
+      )) return;
+
+      let imported = 0;
+      for (const { file, question } of uploads) {
+        try {
+          await api.shareTeamAnswer(currentBatchId, question.number, memberId, {
+            display_name: displayName,
+            csv_text: await file.text(),
+            note: "",
+          });
+          imported += 1;
+        } catch (error) {
+          failures.push(`${file.name}: ${error instanceof Error ? error.message : "không cập nhật được"}`);
+        }
+      }
+      if (imported > 0) {
+        await refresh();
+        toast.success(`Đã import ${imported}/${uploads.length} file CSV vào chia sẻ.`);
+      }
+      if (failures.length) {
+        toast.error(`Không import được ${failures.length} file: ${failures.slice(0, 3).join("; ")}${failures.length > 3 ? "…" : ""}`);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không cập nhật được CSV.");
+    } finally { setUpdatingCsv(false); }
+  };
   const deleteCurrentBatch = async () => {
     if (!currentBatchId) return;
     if (!window.confirm(
@@ -284,6 +409,8 @@ export function TeamSubmissionPanel() {
         </div>
         <input ref={importRef} type="file" accept=".zip,application/zip" className="hidden"
                onChange={(event) => { const file = event.target.files?.[0]; event.currentTarget.value = ""; if (file) void importQuestions(file); }} />
+        <input ref={updateCsvRef} type="file" accept=".csv,text/csv" multiple className="hidden"
+               onChange={(event) => { const files = Array.from(event.target.files ?? []); event.currentTarget.value = ""; if (files.length) void updateSharedCsv(files); }} />
         <input ref={restoreRef} type="file" accept=".zip,application/zip" className="hidden"
                onChange={(event) => { const file = event.target.files?.[0]; event.currentTarget.value = ""; if (file) void restore(file); }} />
         {batches.data?.length ? (
@@ -292,9 +419,12 @@ export function TeamSubmissionPanel() {
           </Select>
         ) : <p className="text-[10.5px] leading-snug text-[var(--color-fg-mute)]">Upload <span className="font-mono">question.zip</span> một lần để tạo bảng chung.</p>}
         {currentBatchId && <div className="flex flex-wrap gap-1">
+          <Button size="sm" variant="success" onClick={() => updateCsvRef.current?.click()} disabled={updatingCsv}>
+            <FileUp size={11} /> {updatingCsv ? "Đang import…" : "Import CSV"}
+          </Button>
+          <Button size="sm" variant="primary" onClick={exportSubmission}><Download size={11} /> Export ZIP</Button>
           <Button size="sm" variant="ghost" onClick={downloadBackup}><Download size={11} /> Backup</Button>
           <Button size="sm" variant="ghost" onClick={() => restoreRef.current?.click()} disabled={restoring}><ArchiveRestore size={11} /> Restore</Button>
-          <Button size="sm" variant="primary" onClick={exportSubmission}><Download size={11} /> Export ZIP</Button>
           <Button size="sm" variant="ghost" onClick={() => void deleteCurrentBatch()} disabled={deleting}
                   className="text-[var(--color-err)] hover:text-[var(--color-err)]">
             <Trash2 size={11} /> {deleting ? "Đang xóa…" : "Xóa đề"}

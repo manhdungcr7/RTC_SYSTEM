@@ -104,6 +104,16 @@ def update_answer(batch_id: str, question_number: int, member_id: str, data: Rev
         raise _http_error(exc) from exc
 
 
+@router.delete("/batches/{batch_id}/questions/{question_number}/answers/{member_id}")
+def delete_answer(batch_id: str, question_number: int, member_id: str):
+    try:
+        return _repo.delete_answer(
+            batch_id=batch_id, question_number=question_number, member_id=member_id,
+        )
+    except TeamSubmissionError as exc:
+        raise _http_error(exc) from exc
+
+
 @router.put("/batches/{batch_id}/questions/{question_number}/choice")
 def choose_answer(batch_id: str, question_number: int, data: ChoiceInput):
     try:
@@ -111,6 +121,14 @@ def choose_answer(batch_id: str, question_number: int, data: ChoiceInput):
             batch_id=batch_id, question_number=question_number, member_id=data.member_id,
             actor_member_id=data.actor_member_id, actor_display_name=data.actor_display_name,
         )
+    except TeamSubmissionError as exc:
+        raise _http_error(exc) from exc
+
+
+@router.delete("/batches/{batch_id}/questions/{question_number}/choice")
+def clear_choice(batch_id: str, question_number: int):
+    try:
+        return _repo.clear_choice(batch_id=batch_id, question_number=question_number)
     except TeamSubmissionError as exc:
         raise _http_error(exc) from exc
 

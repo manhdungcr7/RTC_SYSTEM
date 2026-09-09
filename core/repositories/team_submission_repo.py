@@ -442,6 +442,31 @@ class TeamSubmissionRepo:
                 (batch_id, question_number, member_id),
             ).fetchone())
 
+    def delete_answer(self, *, batch_id: str, question_number: int, member_id: str) -> dict[str, Any]:
+        """Xoa mot bai chia se; khong dong vao ban nhap local cua bat ky may nao."""
+        batch_id = batch_id.lower().strip()
+        member_id = normalize_member_id(member_id)
+        with self._lock, self._connect() as conn:
+            answer = conn.execute(
+                """SELECT 1 FROM shared_answers
+                   WHERE batch_id = ? AND question_number = ? AND member_id = ?""",
+                (batch_id, question_number, member_id),
+            ).fetchone()
+            if answer is None:
+                raise TeamSubmissionNotFoundError("Khong tim thay bai chia se can xoa.")
+            # FK ON DELETE CASCADE tu submission_choices dam bao dap an da chon
+            # khong the tro thanh mot tham chieu mo sau khi xoa bai nay.
+            conn.execute(
+                "DELETE FROM shared_answers WHERE batch_id = ? AND question_number = ? AND member_id = ?",
+                (batch_id, question_number, member_id),
+            )
+            return {
+                "batch_id": batch_id,
+                "question_number": question_number,
+                "member_id": member_id,
+                "deleted": True,
+            }
+
     def choose_answer(self, *, batch_id: str, question_number: int, member_id: str,
                       actor_member_id: str, actor_display_name: str) -> dict[str, Any]:
         batch_id = batch_id.lower().strip()
@@ -466,6 +491,17 @@ class TeamSubmissionRepo:
                 (batch_id, question_number, member_id, actor_member_id, actor_display_name, now),
             )
             return {"question_number": question_number, "member_id": member_id, "updated_at": now}
+
+    def clear_choice(self, *, batch_id: str, question_number: int) -> dict[str, Any]:
+        """Bo dap an tong hop cua mot cau de nguoi dung chon lai."""
+        batch_id = batch_id.lower().strip()
+        with self._lock, self._connect() as conn:
+            self._question_with_conn(conn, batch_id, question_number)
+            deleted = conn.execute(
+                "DELETE FROM submission_choices WHERE batch_id = ? AND question_number = ?",
+                (batch_id, question_number),
+            ).rowcount
+            return {"question_number": question_number, "cleared": bool(deleted)}
 
     def backup_batch(self, batch_id: str) -> dict[str, Any]:
         return {"format": "aic-team-submission-backup", "version": 1,
