@@ -43,6 +43,8 @@ function Pages() {
 export function App() {
   const csvPreviewOpen = useUi((s) => s.csvPreviewOpen);
   const setCsvPreviewOpen = useUi((s) => s.setCsvPreviewOpen);
+  const sharedCsvPreview = useUi((s) => s.sharedCsvPreview);
+  const setSharedCsvPreview = useUi((s) => s.setSharedCsvPreview);
   return (
     <QueryClientProvider client={qc}>
       <div className="flex h-full flex-col">
@@ -53,7 +55,8 @@ export function App() {
       <WorkbenchOverlay />
       <ConnectionDialog />
       <ShortcutsDialog />
-      <CsvPreviewModal open={csvPreviewOpen} onOpenChange={setCsvPreviewOpen} />
+      <CsvPreviewModal open={csvPreviewOpen} source={sharedCsvPreview}
+                       onOpenChange={(open) => { setCsvPreviewOpen(open); if (!open) setSharedCsvPreview(null); }} />
       <Toaster theme="dark" position="bottom-center" richColors closeButton
                toastOptions={{ style: { fontSize: "12px" } }} />
     </QueryClientProvider>

@@ -67,7 +67,7 @@ app.add_middleware(
 )
 
 from api.routers import (config as config_router, media, search,  # noqa: E402
-                          similar, submit, temporal, videos)
+                          similar, submit, team_submissions, temporal, videos)
 
 app.include_router(search.router)
 app.include_router(temporal.router)
@@ -76,6 +76,7 @@ app.include_router(media.router)
 app.include_router(submit.router)
 app.include_router(videos.router)
 app.include_router(config_router.router)
+app.include_router(team_submissions.router)
 
 
 @app.get("/health")

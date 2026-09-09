@@ -15,17 +15,19 @@ import { DndContext, closestCenter } from "@dnd-kit/core";
 import type { DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useMutation } from "@tanstack/react-query";
-import { AlertTriangle, Check, Copy, FileDown, GripVertical, Plus, Trash2 } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle, Check, Copy, FileDown, GripVertical, Plus, Share2, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { toast } from "sonner";
 
 import { api } from "../../api/client";
-import { Button, Label, Select, TextInput, cx } from "../../components/ui";
+import { Button, Label, Pop, Select, TextArea, TextInput, cx } from "../../components/ui";
 import {
   MAX_ANSWER_LEN, MAX_ROWS, framesPerRow, toBackendRows, useSubmission, validateFile,
 } from "../../stores/submissionStore";
+import { useTeamBoard } from "../../stores/teamBoardStore";
+import { isValidMemberId, useTeamIdentity } from "../../stores/teamIdentityStore";
 import type { DraftFile, DraftRow } from "../../stores/submissionStore";
 import type { QueryKind } from "../../types/api";
 
@@ -109,6 +111,7 @@ function Row({ file, row, index }: { file: DraftFile; row: DraftRow; index: numb
 }
 
 export function SubmitPanel() {
+  const qc = useQueryClient();
   const { pathname } = useLocation();
   const files = useSubmission((s) => s.files);
   const order = useSubmission((s) => s.order);
@@ -120,9 +123,22 @@ export function SubmitPanel() {
   const patchFile = useSubmission((s) => s.patchFile);
   const addRow = useSubmission((s) => s.addRow);
   const reorderRows = useSubmission((s) => s.reorderRows);
+  const teamBatchId = useTeamBoard((s) => s.activeBatchId);
+  const teamDisplayName = useTeamIdentity((s) => s.displayName);
+  const teamMemberId = useTeamIdentity((s) => s.memberId);
 
   const [newName, setNewName] = useState("query-p1-1-kis");
   const [newKind, setNewKind] = useState<QueryKind>("kis");
+  const [quickQuestion, setQuickQuestion] = useState("");
+  const [shareNote, setShareNote] = useState("");
+
+  // Chi tai danh sach de da import de tao nhanh file nhap. Khong dong bo bat ky
+  // dap an chia se nao vao localStorage; nguoi dung van phai bam Nhan neu can.
+  const teamBoard = useQuery({
+    queryKey: ["team-batch", teamBatchId],
+    queryFn: ({ signal }) => api.getTeamBatch(teamBatchId!, signal),
+    enabled: Boolean(teamBatchId),
+  });
 
   useEffect(() => {
     if (pathname !== "/temporal") return;
@@ -178,6 +194,46 @@ export function SubmitPanel() {
     toast.success(`Đã tải ${f.name}.csv`);
   };
 
+  const selectImportedQuestion = (filename: string) => {
+    setQuickQuestion("");
+    const question = teamBoard.data?.questions.find((item) => item.filename === filename);
+    if (!question) return;
+    const localName = question.filename.replace(/\.csv$/i, "");
+    setNewName(localName);
+    setNewKind(question.kind);
+    if (files[localName]) {
+      setActiveFile(localName);
+      toast.message(`Đã mở bản nháp ${question.filename}.`);
+      return;
+    }
+    createFile(localName, question.kind, question.kind === "trake" ? (question.trake_event_count ?? 4) : 4);
+    toast.success(`Đã tạo bản nháp câu ${question.number}: ${question.filename}.`);
+  };
+
+  const share = useMutation({
+    mutationFn: async () => {
+      if (!file) throw new Error("Chưa chọn file nộp bài.");
+      if (!teamBatchId) throw new Error("Chưa có bảng chung. Mở tab Chia sẻ và upload question.zip trước.");
+      if (!teamDisplayName.trim() || !isValidMemberId(teamMemberId))
+        throw new Error("Hãy cấu hình Danh tính ở góc trên phải trước khi chia sẻ.");
+      const board = await api.getTeamBatch(teamBatchId);
+      const question = board.questions.find((item) => item.filename === `${file.name}.csv`);
+      if (!question) throw new Error(`File ${file.name}.csv không thuộc batch ${teamBatchId}.`);
+      if (question.kind !== file.kind) throw new Error(`Loại file không khớp: đề là ${question.kind.toUpperCase()}.`);
+      const built = await api.submitPreview(file.kind, toBackendRows(file), file.kind === "trake" ? file.nEvents : null);
+      if (built.errors.length) throw new Error(`CSV chưa hợp lệ: ${built.errors.slice(0, 3).join("; ")}`);
+      await api.shareTeamAnswer(teamBatchId, question.number, teamMemberId, {
+        display_name: teamDisplayName, csv_text: built.csv_text, note: shareNote,
+      });
+      return question;
+    },
+    onSuccess: async (question) => {
+      await qc.invalidateQueries({ queryKey: ["team-batch", teamBatchId] });
+      toast.success(`Đã chia sẻ câu ${question.number}; chỉ cập nhật bản của bạn.`);
+    },
+    onError: (error: Error) => toast.error(error.message || "Không chia sẻ được bài nộp."),
+  });
+
   const onDragEnd = (e: DragEndEvent) => {
     if (!file) return;
     const { active, over } = e;
@@ -192,6 +248,20 @@ export function SubmitPanel() {
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
       <div className="flex flex-col gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-line)] p-2">
         <Label className="mb-0">Tạo file kết quả</Label>
+        {teamBatchId && (
+          <Select value={quickQuestion} onChange={(event) => selectImportedQuestion(event.target.value)}
+                  disabled={teamBoard.isLoading || !teamBoard.data}
+                  className="w-full px-1.5 py-1 text-[11px]">
+            <option value="">
+              {teamBoard.isLoading ? "Đang tải danh sách câu hỏi…" : "Chọn câu hỏi đã import để tạo nhanh…"}
+            </option>
+            {teamBoard.data?.questions.map((question) => (
+              <option key={question.number} value={question.filename}>
+                #{question.number} · {question.kind.toUpperCase()} · {question.filename}
+              </option>
+            ))}
+          </Select>
+        )}
         <div className="flex gap-1">
           <TextInput value={newName} onChange={(e) => setNewName(e.target.value)}
                      placeholder="query-p1-1-kis"
@@ -212,7 +282,9 @@ export function SubmitPanel() {
           </Button>
         </div>
         <p className="text-[10px] leading-snug text-[var(--color-fg-mute)]">
-          Tên file phải trùng tên câu truy vấn của BTC, không kèm đuôi .csv
+          {teamBatchId
+            ? "Chọn câu hỏi bên trên để tạo/mở nháp đúng tên; hoặc vẫn có thể nhập tay."
+            : "Tên file phải trùng tên câu truy vấn của BTC, không kèm đuôi .csv"}
         </p>
       </div>
 
@@ -343,6 +415,21 @@ export function SubmitPanel() {
           <Button size="sm" variant="primary" onClick={() => downloadOne(file)} disabled={check.errors.length > 0}>
             <FileDown size={11} /> Tải {file.name}.csv
           </Button>
+          <Pop width={300} align="end" trigger={
+            <Button size="sm" variant="success" disabled={check.errors.length > 0 || share.isPending}>
+              <Share2 size={11} /> Chia sẻ bài nộp
+            </Button>
+          }>
+            <Label>Chia sẻ {file.name}.csv</Label>
+            <p className="mb-2 text-[10.5px] leading-snug text-[var(--color-fg-mute)]">
+              Chỉ gửi khi bạn bấm nút này. Bản nháp local của mọi người khác không bị thay đổi.
+            </p>
+            <TextArea value={shareNote} onChange={(e) => setShareNote(e.target.value)}
+                      placeholder="Ghi chú cho đồng đội…" className="mb-2 min-h-[56px] text-[11px]" />
+            <Button size="sm" variant="primary" className="w-full" onClick={() => share.mutate()} disabled={share.isPending}>
+              <Share2 size={11} /> {share.isPending ? "Đang chia sẻ…" : "Xác nhận chia sẻ"}
+            </Button>
+          </Pop>
           <Button size="sm" variant="ghost" onClick={() => removeFile(file.name)}
                   className="text-[var(--color-err)] hover:bg-[color-mix(in_srgb,var(--color-err)_10%,transparent)] hover:text-[var(--color-err)]">
             <Trash2 size={11} /> Xoá file "{file.name}"

@@ -164,7 +164,7 @@ export function Select({ className, children, ...p }: React.SelectHTMLAttributes
 
 /* ---------------- Nút ---------------- */
 
-type BtnVariant = "default" | "primary" | "ghost" | "danger";
+type BtnVariant = "default" | "primary" | "success" | "ghost" | "danger";
 
 export const Button = forwardRef<HTMLButtonElement,
   React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: BtnVariant; size?: "sm" | "md" }>(
@@ -179,6 +179,8 @@ export const Button = forwardRef<HTMLButtonElement,
         "hover:border-[var(--color-line-hi)] hover:bg-[var(--color-panel-3)]",
       primary:
         "border-[var(--color-focus)] bg-[var(--color-focus)] text-[#0B1220] hover:brightness-110",
+      success:
+        "border-[var(--color-ok)] bg-[var(--color-ok)] text-[#0B1220] hover:brightness-110",
       ghost:
         "border-transparent bg-transparent text-[var(--color-fg-dim)] hover:text-[var(--color-fg)] " +
         "hover:bg-[var(--color-panel-2)]",
