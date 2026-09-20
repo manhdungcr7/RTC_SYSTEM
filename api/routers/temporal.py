@@ -12,8 +12,9 @@ C.ASR_WEIGHT["trake"]) — câu chữ/lời vẫn nhập RIÊNG từng sự ki�
 tính điểm đó vào DP hay không và tính bao nhiêu, giống hệt semantics của các
 nhánh thị giác — xem _signal().
 
-KHÔNG PHẠT KHOẢNG CÁCH THỜI GIAN (theo yêu cầu): luôn gọi search_temporal với
-lam=0.0, không còn nhận lambda_penalty từ client.
+KHÔNG dùng phạt mềm theo khoảng cách thời gian: luôn gọi search_temporal với
+lam=0.0. Người dùng vẫn có thể đặt giới hạn cứng max_gap_s/gap_constraints để
+tránh ghép các phóng sự xa nhau trong cùng một video dài.
 
 TÁCH MỆNH ĐỀ TỪNG SỰ KIỆN (giống Search): mỗi câu event được tách thành nhiều
 mệnh đề thị giác trước khi encode (core.query_service.clauses_metaclip2), sự
@@ -150,10 +151,11 @@ def temporal(req: TemporalRequest,
     # OCR/ASR mặc định dùng câu event đã cắt khung mẫu — NHƯNG người vận hành có
     # thể ghi đè tay RIÊNG từng sự kiện (req.ocr_queries[i]/asr_queries[i]) khi
     # biết chính xác chữ/lời cần tìm, bỏ qua đoán tự động cho đúng sự kiện đó
-    # (các sự kiện không ghi đè vẫn dùng tự động — không phải tất-cả-hoặc-không-gì).
+    # (các sự kiện không có mục ghi đè vẫn dùng tự động; mục rỗng chủ ý tắt
+    # OCR/ASR cho đúng sự kiện đó — không phải tất-cả-hoặc-không-gì).
     def _override(manual: list[str] | None, i: int, fallback: str) -> str:
-        if manual and i < len(manual) and manual[i].strip():
-            return manual[i]
+        if manual is not None and i < len(manual):
+            return manual[i].strip()
         return fallback
 
     # OCR/ASR CŨNG lên bàn trộn (giống Search) — bật/tắt + chỉnh trọng số đóng góp
@@ -178,7 +180,11 @@ def temporal(req: TemporalRequest,
             src_texts = texts               # đa ngữ, không cần dịch
         else:
             if en_texts is None:
-                en_texts = translate.vi2en(texts) if translate.available() else texts
+                manual_en = req.event_translations
+                if manual_en and len(manual_en) == len(texts):
+                    en_texts = [manual_en[i].strip() or texts[i] for i in range(len(texts))]
+                else:
+                    en_texts = translate.vi2en(texts) if translate.available() else texts
             src_texts = en_texts
         vecs = _encode_branch_events(encoders, branch, src_texts)
         if vecs is not None and len(vecs) == len(texts):
@@ -194,6 +200,7 @@ def temporal(req: TemporalRequest,
         locked_frames=req.locked_frames,
         gap_constraints=[{"from": g.from_, "to": g.to, "min_s": g.min_s, "max_s": g.max_s}
                           for g in (req.gap_constraints or [])],
+        max_gap_s=req.max_gap_s,
         alternates_per_event=req.alternates_per_event,
         metaclip2_weight=(mc_weight if mc_enabled else 1.0),
         aux_branches=aux_branches,

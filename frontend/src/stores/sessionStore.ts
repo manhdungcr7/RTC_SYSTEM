@@ -104,7 +104,7 @@ export function makeSession(id: string, label?: string): SessionState {
     feedbackNeg: [],
     feedbackBeta: 0.6,
     feedbackGamma: 0.3,
-    perVideoCap: 3,
+    perVideoCap: 5,
     dedupSeconds: 0,
     topk: 200,
     rrfK: 60,

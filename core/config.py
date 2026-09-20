@@ -75,6 +75,14 @@ TRAKE_LAMBDA = 0.001
 # milvus_repo.videos_from_topk giữ thứ tự) — 150 đủ rộng cho @top5-10 kết quả.
 MAX_TRAKE_CANDIDATES = 150
 
+# Candidate generation for multi-event retrieval. These fractions reserve recall
+# budget for videos covering many events, strong hits from any single event, and
+# OCR/ASR hits. Final ranking is still computed by temporal DP on every keyframe
+# of each shortlisted video.
+TRAKE_COVERAGE_CANDIDATE_FRACTION = 0.50
+TRAKE_STRONG_EVENT_CANDIDATE_FRACTION = 0.25
+TRAKE_TEXT_CANDIDATE_FRACTION = 0.25
+
 
 # Submit (theo quy chế BTC — xem core/submit.py)
 MAX_SUBMIT_ROWS = 100

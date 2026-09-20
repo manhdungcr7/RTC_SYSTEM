@@ -66,11 +66,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from api.routers import (config as config_router, media, search,  # noqa: E402
+from api.routers import (config as config_router, media, query_plan, search,  # noqa: E402
                           similar, submit, team_submissions, temporal, videos)
 
 app.include_router(search.router)
 app.include_router(temporal.router)
+app.include_router(query_plan.router)
 app.include_router(similar.router)
 app.include_router(media.router)
 app.include_router(submit.router)

@@ -5,15 +5,15 @@
  *     thường đặc trưng hơn (vd "4 chân chạm đất" dễ nhận hơn "lân xoay trên cột").
  *   - Ghi đè chữ/lời riêng cho TỪNG sự kiện — khi cả chuỗi nhìn giống nhau,
  *     chữ trên banner mới là thứ phân biệt được.
- *   - KHÔNG phạt khoảng cách thời gian giữa các sự kiện (luôn tắt — không giả
- *     định các sự kiện phải gần nhau, xem api/routers/temporal.py).
+ *   - KHÔNG phạt mềm khoảng cách thời gian; có thể đặt giới hạn cứng để tránh
+ *     ghép các phóng sự khác nhau trong cùng video dài.
  *   - Bàn trộn trọng số 4 nhánh thị giác (metaclip2/pecore/beit3/capemb) — CHỈ
  *     đổi cách CHẤM ĐIỂM từng khung hình, không đụng thuật toán DP/boundary-
  *     anchor phía sau (xem core/temporal.py).
  */
 import { useMutation } from "@tanstack/react-query";
 import {
-  Anchor, CheckSquare, ChevronDown, Loader2, Lock, Plus, Search, ThumbsDown, ThumbsUp, Trash2, X,
+  Anchor, CheckSquare, ChevronDown, FileJson, Loader2, Lock, Plus, Search, ThumbsDown, ThumbsUp, Trash2, X,
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
@@ -24,15 +24,19 @@ import { Inspector } from "../features/inspector/Inspector";
 import { TemporalMixerStrip } from "../features/search/SignalMixer";
 import { VideoScopePanel } from "../features/search/ScopePanels";
 import type { VideoScopeValue } from "../features/search/ScopePanels";
+import { QueryPlanImportModal } from "../features/search/QueryPlanImportModal";
+import { temporalEventsFromPlan } from "../features/search/temporalQueryPlan";
+import { VideoListDownload } from "../features/results/VideoListDownload";
 import { SubmitPanel } from "../features/submission/SubmitPanel";
 import { formatTimecode } from "../features/viewer/useFrameIndex";
 import { framesPerRow, useSubmission } from "../stores/submissionStore";
 import { useUi } from "../stores/uiStore";
 import { DEFAULT_WEIGHTS, TEMPORAL_BRANCHES } from "../types/api";
-import type { FeedbackConfig, FrameRef, SearchHit, TemporalCandidate } from "../types/api";
+import type { FeedbackConfig, FrameRef, SearchHit, TemporalCandidate, VisualQueryPlan } from "../types/api";
 
 interface EventRow {
   text: string;
+  translation: string;
   ocr: string;
   asr: string;
   anchor: boolean;
@@ -43,7 +47,7 @@ interface EventRow {
   clausesOverride: string[];
 }
 
-const newEvent = (): EventRow => ({ text: "", ocr: "", asr: "", anchor: false, locked: "", clausesOverride: [] });
+const newEvent = (): EventRow => ({ text: "", translation: "", ocr: "", asr: "", anchor: false, locked: "", clausesOverride: [] });
 
 type WeightState = Record<string, { enabled: boolean; weight: number }>;
 // Nhánh THỊ GIÁC — trộn vào vector sự kiện trước khi so khớp.
@@ -65,6 +69,8 @@ const initialWeights: WeightState = {
 };
 
 export function TemporalPage() {
+  const [sourceQuery, setSourceQuery] = useState("");
+  const [planOpen, setPlanOpen] = useState(false);
   const [context, setContext] = useState("");
   const [events, setEvents] = useState<EventRow[]>([
     { ...newEvent(), anchor: true }, { ...newEvent(), anchor: true },
@@ -72,6 +78,7 @@ export function TemporalPage() {
   const [autoSplit, setAutoSplit] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [perEvent, setPerEvent] = useState(1500);
+  const [maxGapS, setMaxGapS] = useState(120);
   const [weights, setWeights] = useState<WeightState>(initialWeights);
   const [scope, setScope] = useState<VideoScopeValue>({ videos: [], invert: false });
   // Khung người dùng đã tự đổi, theo khoá "chỉ-số-ứng-viên-chỉ-số-sự-kiện".
@@ -129,6 +136,32 @@ export function TemporalPage() {
     return true;
   };
 
+  const applyPlan = (plan: VisualQueryPlan) => {
+    if (plan.events.length < 2) {
+      toast.error("Kế hoạch chỉ có một sự kiện; hãy dùng nó ở trang Tìm khung hình.");
+      return;
+    }
+    const planned = temporalEventsFromPlan(plan).map((event) => ({
+      ...newEvent(),
+      ...event,
+    }));
+    const hasOcr = planned.some((event) => event.ocr.trim());
+    const hasAsr = planned.some((event) => event.asr.trim());
+    setSourceQuery(plan.original_query || sourceQuery);
+    setContext(plan.context.vi || plan.context.en);
+    setEvents(planned);
+    setAutoSplit(false);
+    setMaxGapS(plan.max_gap_s ?? 120);
+    setShowAdvanced(hasOcr || hasAsr || planned.some((event) => event.translation));
+    setWeights((previous) => ({
+      ...previous,
+      ocr: { ...previous.ocr, enabled: hasOcr },
+      asr: { ...previous.asr, enabled: hasAsr },
+    }));
+    setFeedback({});
+    setSwaps({});
+  };
+
   const toggleAnchor = (i: number) =>
     setEvents((p) => {
       const cur = p[i].anchor;
@@ -168,8 +201,10 @@ export function TemporalPage() {
         split_clauses: autoSplit,
         ocr_queries: valid.map(({ e }) => e.ocr),
         asr_queries: valid.map(({ e }) => e.asr),
+        event_translations: valid.map(({ e }) => e.translation),
         anchor_indices: anchors.length === 2 ? anchors : null,
         per_event: perEvent,
+        max_gap_s: maxGapS > 0 ? maxGapS : null,
         topk: 50,
         locked_frames: valid.map(({ e }) => (e.locked.trim() ? Number(e.locked) : null)),
         alternates_per_event: 5,
@@ -331,6 +366,18 @@ export function TemporalPage() {
       <aside style={{ width: leftWidth }}
              className="flex shrink-0 flex-col overflow-y-auto border-r border-[var(--color-line)] bg-[var(--color-panel)]">
         <div className="border-b border-[var(--color-line)] p-3">
+          <Label>Đề bài gốc</Label>
+          <TextArea
+            value={sourceQuery}
+            onChange={(e) => setSourceQuery(e.target.value)}
+            rows={3}
+            placeholder="Dán nguyên mô tả của BTC, sau đó gửi cho GPT Explore để tạo kế hoạch…"
+            className="mb-2 text-[12px]"
+          />
+          <Button size="sm" variant="primary" className="mb-3" onClick={() => setPlanOpen(true)}>
+            <FileJson size={11} /> Nhập kế hoạch GPT
+          </Button>
+
           <Label>Bối cảnh chung (tuỳ chọn)</Label>
           <TextArea
             value={context} onChange={(e) => setContext(e.target.value)}
@@ -400,6 +447,12 @@ export function TemporalPage() {
                 </div>
                 {showAdvanced && (
                   <div className="ml-7 flex flex-col gap-1">
+                    <div className="flex gap-1">
+                      <TextInput value={ev.translation}
+                                 onChange={(e) => setEv(i, { translation: e.target.value })}
+                                 placeholder="English cho PE-Core/BEiT-3"
+                                 className="flex-1 py-0.5 text-[11px]" />
+                    </div>
                     <div className="flex gap-1">
                       <TextInput value={ev.ocr} onChange={(e) => setEv(i, { ocr: e.target.value })}
                                  placeholder="chữ riêng cho sự kiện này"
@@ -537,24 +590,40 @@ export function TemporalPage() {
 
         <Section title="Nâng cao" defaultOpen={false}>
           <p className="mb-2 text-[10.5px] leading-snug text-[var(--color-fg-mute)]">
-            Các sự kiện KHÔNG bị ép phải gần nhau về thời gian — hệ thống không
-            còn phạt khoảng cách giữa các sự kiện (luôn tắt).
+            Hệ thống không phạt mềm khoảng cách; có thể đặt giới hạn cứng giữa
+            hai sự kiện liền kề để tránh ghép nhầm các phóng sự khác nhau.
           </p>
           <div className="flex items-center gap-2">
-            <span className="w-[110px] text-[11px] text-[var(--color-fg-dim)]">Video ứng viên/neo</span>
+            <span className="w-[110px] text-[11px] text-[var(--color-fg-dim)]">Top frame/sự kiện</span>
             <input type="range" min={300} max={3000} step={100} value={perEvent}
                    onChange={(e) => setPerEvent(Number(e.target.value))}
                    className="h-1 flex-1 accent-[var(--color-focus)]" />
             <span className="w-[36px] text-right font-mono text-[11px] tabular-nums">{perEvent}</span>
           </div>
+          <div className="mt-2 flex items-center gap-2">
+            <span className="w-[110px] text-[11px] text-[var(--color-fg-dim)]">Cách nhau tối đa</span>
+            <input type="number" min={0} step={10} value={maxGapS}
+                   onChange={(e) => setMaxGapS(Math.max(0, Number(e.target.value) || 0))}
+                   className="min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-panel-2)] px-2 py-1 text-[11px]" />
+            <span className="w-[36px] text-right text-[11px] text-[var(--color-fg-mute)]">giây</span>
+          </div>
+          <p className="mt-1 text-[10px] leading-snug text-[var(--color-fg-mute)]">
+            Đặt 0 để không giới hạn. Mặc định 120 giây giúp tránh ghép các phóng sự khác nhau trong cùng video dài.
+          </p>
         </Section>
       </aside>
+      <QueryPlanImportModal
+        open={planOpen}
+        onOpenChange={setPlanOpen}
+        sourceQuery={sourceQuery}
+        onApply={applyPlan}
+      />
       <ResizeHandle side="left" width={leftWidth} onResize={setLeftWidth} />
 
       <main className="min-w-0 flex-1 overflow-y-auto">
         {search.isPending ? (
           <EmptyState title="Đang dò chuỗi sự kiện…"
-                      hint="Đang lọc video ứng viên theo neo thị giác rồi dò thứ tự thời gian trong từng video." />
+                      hint="Đang gom video theo độ phủ của mọi sự kiện rồi dò thứ tự thời gian trong từng video." />
         ) : !search.data ? (
           <EmptyState
             title="Nhập ít nhất 2 sự kiện rồi bấm Tìm"
@@ -567,7 +636,8 @@ export function TemporalPage() {
           />
         ) : (
           <div ref={selectionAreaRef} className="flex flex-col gap-2 p-3">
-            <div className="flex justify-end">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <VideoListDownload videoIds={search.data.candidates.map((candidate) => candidate.video)} />
               <Button size="sm" variant="ghost"
                       onClick={() => {
                         setSelectMode((v) => !v);

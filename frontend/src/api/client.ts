@@ -1,7 +1,8 @@
 /** Lớp gọi API duy nhất. Mọi request đi qua /api/* (Vite proxy khi dev, nginx
  *  khi chạy thật — xem docker/nginx.conf). Ảnh/video đi thẳng /media/*. */
 import type {
-  HealthStatus, SearchHit, SearchRequest, SearchResponse, TemporalRequest, TemporalResponse,
+  HealthStatus, QueryPlanValidationResponse, SearchHit, SearchRequest, SearchResponse,
+  TemporalRequest, TemporalResponse,
   TeamBatch, TeamBatchSummary, TeamCheckStatus, VideoMap, VideoSearchResponse,
 } from "../types/api";
 
@@ -76,6 +77,9 @@ async function del<T>(path: string): Promise<T> {
 }
 
 export const api = {
+  validateQueryPlan: (plan: Record<string, unknown>, signal?: AbortSignal) =>
+    post<QueryPlanValidationResponse>("/query/plan/validate", { plan }, signal),
+
   search: (req: SearchRequest, signal?: AbortSignal) =>
     post<SearchResponse>("/search", req, signal),
 

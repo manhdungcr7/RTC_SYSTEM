@@ -19,6 +19,7 @@ import { useUi } from "../../stores/uiStore";
 import { BRANCHES, BRANCH_COLOR } from "../../types/api";
 import type { SearchHit, SearchResponse } from "../../types/api";
 import { ResultTile } from "./ResultTile";
+import { VideoListDownload } from "./VideoListDownload";
 
 const GAP = 8;
 
@@ -277,7 +278,7 @@ function GroupedByVideo({ hits }: { hits: SearchHit[] }) {
     return [...m.entries()]
       .map(([video, list]) => ({
         video,
-        list: [...list].sort((x, y) => (x.pts_time ?? 0) - (y.pts_time ?? 0)),
+        list: [...list].sort((x, y) => y.score - x.score || x.rank - y.rank),
         best: Math.min(...list.map((x) => x.rank)),
       }))
       .sort((x, y) => y.list.length - x.list.length || x.best - y.best);
@@ -421,6 +422,8 @@ export function ResultArea({ data, isLoading, error, onRetry }: {
         )}
 
         <div className="ml-auto flex items-center gap-1">
+          <VideoListDownload videoIds={data?.hits.map((hit) => hit.video) ?? []}
+                             disabled={isLoading || !!error} />
           {view === "grid" && (
             <button type="button"
                     onClick={() => {

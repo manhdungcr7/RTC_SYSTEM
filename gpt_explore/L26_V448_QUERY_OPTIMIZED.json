@@ -1,0 +1,49 @@
+{
+  "original_query": "Một đầu bếp đang chuẩn bị một món ăn từ một miếng thực phẩm màu cam. Người này băm nhỏ một số nguyên liệu, tách các hạt nhỏ khỏi cành rồi trộn chúng thành hỗn hợp gia vị. Sau đó, nhiều loại gia vị được lần lượt thêm vào và hỗn hợp được phủ lên cả hai mặt của nguyên liệu chính trước khi thêm một chất lỏng.\nTrong quá trình nêm gia vị, lượng nước tương được sử dụng là bao nhiêu?",
+  "context": {
+    "vi": "Đầu bếp chế biến miếng thực phẩm màu cam.",
+    "en": "A chef prepares an orange-colored food piece."
+  },
+  "events": [
+    {
+      "vi": "Cận cảnh tay tách các hạt nhỏ khỏi cành.",
+      "en": "Close-up of hands removing small seeds from a stem.",
+      "anchor": true,
+      "visual_keywords": ["tay tách hạt", "hạt nhỏ", "cành"],
+      "ocr": "",
+      "asr": ""
+    },
+    {
+      "vi": "Thêm nước tương vào hỗn hợp gia vị cạnh miếng thực phẩm màu cam.",
+      "en": "Adding soy sauce to a seasoning mixture beside an orange-colored food piece.",
+      "anchor": false,
+      "visual_keywords": ["miếng thực phẩm màu cam", "hỗn hợp gia vị", "nước tương"],
+      "ocr": "",
+      "asr": ""
+    },
+    {
+      "vi": "Phủ hỗn hợp gia vị lên hai mặt miếng thực phẩm màu cam.",
+      "en": "Coating both sides of an orange-colored food piece with a seasoning mixture.",
+      "anchor": true,
+      "visual_keywords": ["miếng màu cam", "phủ gia vị", "hai mặt"],
+      "ocr": "",
+      "asr": ""
+    }
+  ],
+  "search_clauses": [
+    "Cận cảnh tay tách các hạt nhỏ khỏi cành.",
+    "Thêm nước tương vào hỗn hợp gia vị cạnh miếng thực phẩm màu cam.",
+    "Phủ hỗn hợp gia vị lên hai mặt miếng thực phẩm màu cam."
+  ],
+  "search_clauses_en": [
+    "Close-up of hands removing small seeds from a stem.",
+    "Adding soy sauce to a seasoning mixture beside an orange-colored food piece.",
+    "Coating both sides of an orange-colored food piece with a seasoning mixture."
+  ],
+  "distinctive_features": ["tách hạt khỏi cành", "miếng thực phẩm màu cam", "phủ gia vị hai mặt"],
+  "possible_confusions": ["Đề chưa nêu tên chính xác thực phẩm màu cam và loại hạt; không dùng tên xác minh từ video đáp án để đánh giá truy vấn mù."],
+  "ocr_queries": [],
+  "asr_queries": [],
+  "recommended_mode": "temporal",
+  "max_gap_s": 120
+}

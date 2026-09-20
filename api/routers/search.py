@@ -250,7 +250,15 @@ def search(req: SearchRequest,
         # Docker nhẹ (chỉ dùng encoder từ xa) — available() tự dò an toàn, không
         # có thì rơi về câu tiếng Việt gốc thay vì crash (2 nhánh này encode được
         # tiếng Việt cũng không sai, chỉ là kém chính xác hơn bản dịch).
-        if req.split_clauses:
+        # Khi người dùng/GPT đã cung cấp mệnh đề thủ công, bản dịch phải đi theo
+        # CHÍNH các mệnh đề đó. Trước đây vẫn dịch `query_vi` nên số dòng có thể
+        # lệch với clauses_mc; translations[i] sau đó ghi đè nhầm câu.
+        if req.clauses is not None:
+            if translate.available():
+                clauses_en = translate.vi2en(clauses_mc)
+            else:
+                clauses_en = list(clauses_mc)
+        elif req.split_clauses:
             clauses_en = query_service.clauses_en(query_vi)
         elif query_vi:
             clauses_en = translate.vi2en([query_vi]) if translate.available() else [query_vi]

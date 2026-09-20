@@ -31,6 +31,8 @@ không phá hành vi hiện có).
 """
 from __future__ import annotations
 
+from collections import deque
+
 import numpy as np
 
 from core import config as C
@@ -123,15 +125,23 @@ def _text_candidate_videos(meili_repo: MeiliRepo, ocr_texts: list[str], asr_text
             videos.append(video)
 
     for text in ocr_texts:
-        if not text.strip() or len(videos) >= max_videos:
+        if len(videos) >= max_videos:
             break
+        if not text.strip():
+            continue
         for doc_id in meili_repo.search_frames("ocr_text", text, size):
             _add(doc_id.split(":", 1)[0])
+            if len(videos) >= max_videos:
+                break
     for text in asr_texts:
-        if not text.strip() or len(videos) >= max_videos:
+        if len(videos) >= max_videos:
             break
+        if not text.strip():
+            continue
         for video, *_ in meili_repo.search_asr(text, size):
             _add(video)
+            if len(videos) >= max_videos:
+                break
     return videos[:max_videos]
 
 
@@ -155,6 +165,113 @@ def _videos_from_topk_clauses(faiss_repo: FaissRepo, collection: str,
     return videos[:per_event]
 
 
+def _round_robin_unique(rankings: list[list[str]]) -> list[str]:
+    """Interleave rank lists so one generic event cannot consume every slot."""
+    out: list[str] = []
+    seen: set[str] = set()
+    max_len = max((len(ranking) for ranking in rankings), default=0)
+    for rank in range(max_len):
+        for ranking in rankings:
+            if rank >= len(ranking):
+                continue
+            video = ranking[rank]
+            if video not in seen:
+                seen.add(video)
+                out.append(video)
+    return out
+
+
+def _rank_candidate_videos(
+    event_sources: list[list[tuple[list[str], float]]],
+    *,
+    limit: int,
+    anchor_indices: tuple[int, int] | None = None,
+    text_videos: list[str] | None = None,
+) -> list[str]:
+    """Build a recall-oriented shortlist from every event and signal branch.
+
+    Each event first fuses its branch-specific video rankings with weighted RRF.
+    Across events, coverage is the primary signal. Manually selected anchors get
+    a small boost but are no longer a hard gate. Separate quota lanes preserve
+    strong single-event and OCR/ASR candidates that a coverage-only ranking could
+    otherwise discard.
+    """
+    if limit <= 0:
+        return []
+
+    anchors = set(anchor_indices or ())
+    per_event_rankings: list[list[str]] = []
+    event_scores: list[dict[str, float]] = []
+    for event_idx, sources in enumerate(event_sources):
+        scores: dict[str, float] = {}
+        for videos, source_weight in sources:
+            if source_weight <= 0:
+                continue
+            for rank, video in enumerate(videos):
+                scores[video] = scores.get(video, 0.0) + source_weight / (C.RRF_K + rank + 1)
+        event_scores.append(scores)
+
+    # A discriminative event tends to concentrate its top frames in fewer
+    # videos. Give such events a bounded automatic boost instead of assuming
+    # the first/last event is always the best anchor.
+    largest_event_pool = max((len(scores) for scores in event_scores), default=0)
+    for event_idx, scores in enumerate(event_scores):
+        if not scores:
+            continue
+        rarity_boost = min(2.0, (largest_event_pool / len(scores)) ** 0.5)
+        anchor_boost = 1.25 if event_idx in anchors else 1.0
+        scale = rarity_boost * anchor_boost
+        event_scores[event_idx] = {video: score * scale for video, score in scores.items()}
+
+    for scores in event_scores:
+        per_event_rankings.append([
+            video for video, _ in sorted(scores.items(), key=lambda item: (-item[1], item[0]))
+        ])
+
+    all_videos = set().union(*(scores.keys() for scores in event_scores)) if event_scores else set()
+    coverage_ranked = sorted(
+        all_videos,
+        key=lambda video: (
+            -sum(video in scores for scores in event_scores),
+            -sum(scores.get(video, 0.0) for scores in event_scores),
+            video,
+        ),
+    )
+    strong_ranked = _round_robin_unique(per_event_rankings)
+    text_ranked = list(dict.fromkeys(text_videos or []))
+
+    fractions = (
+        C.TRAKE_COVERAGE_CANDIDATE_FRACTION,
+        C.TRAKE_STRONG_EVENT_CANDIDATE_FRACTION,
+        C.TRAKE_TEXT_CANDIDATE_FRACTION,
+    )
+    lanes = (coverage_ranked, strong_ranked, text_ranked)
+    quotas = [int(limit * fraction) for fraction in fractions]
+    quotas[0] += limit - sum(quotas)
+
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def take(ranking: list[str], count: int) -> None:
+        if count <= 0 or len(out) >= limit:
+            return
+        taken = 0
+        for video in ranking:
+            if video in seen:
+                continue
+            seen.add(video)
+            out.append(video)
+            taken += 1
+            if taken >= count or len(out) >= limit:
+                break
+
+    for lane, quota in zip(lanes, quotas):
+        take(lane, quota)
+    if len(out) < limit:
+        take(_round_robin_unique(list(lanes)), limit - len(out))
+    return out[:limit]
+
+
 def search_temporal(event_clause_vecs: list[np.ndarray], faiss_repo: FaissRepo, collection: str,
                      per_event: int = 1500, topk: int = 100,
                      ocr_texts: list[str] | None = None,
@@ -166,6 +283,7 @@ def search_temporal(event_clause_vecs: list[np.ndarray], faiss_repo: FaissRepo, 
                      video_scope: list[str] | None = None,
                      locked_frames: list[int | None] | None = None,
                      gap_constraints: list[dict] | None = None,
+                     max_gap_s: float | None = None,
                      alternates_per_event: int = 0,
                      metaclip2_weight: float = 1.0,
                      aux_branches: list[tuple[str, np.ndarray, float]] | None = None,
@@ -223,6 +341,10 @@ def search_temporal(event_clause_vecs: list[np.ndarray], faiss_repo: FaissRepo, 
     GIAN giữa từng cặp sự kiện. Mạnh hơn hẳn một hệ số phạt λ toàn cục: "E2 phải
     xảy ra trong vòng 30 giây sau E1" là kiến thức con người có mà máy không có.
 
+    `max_gap_s`: giới hạn mặc định cho MỌI cặp sự kiện liền kề chưa có giới hạn
+    chặt hơn trong `gap_constraints`. Dùng để tránh ghép nhiều phóng sự khác nhau
+    trong cùng video dài; None giữ hành vi không giới hạn của API cũ.
+
     `alternates_per_event`: trả kèm K khung hình thay thế tốt nhất cho MỖI vị trí
     sự kiện, để người dùng đổi nhanh một mắt xích yếu mà không phải chạy lại cả DP.
 
@@ -233,31 +355,37 @@ def search_temporal(event_clause_vecs: list[np.ndarray], faiss_repo: FaissRepo, 
         return []
     use_text = ocr_texts is not None and asr_texts is not None and meili_repo is not None and media_index is not None
 
-    # --- Neo boundary: video có cả 2 sự kiện neo trong top-per_event (MADTempo) ---
-    # videos_from_topk() GIỮ THỨ TỰ rank -> cắt về MAX_TRAKE_CANDIDATES vẫn ưu tiên
-    # đúng video liên quan nhất, không cắt ngẫu nhiên (xem lý do trong core.config).
-    # Sự kiện neo nhiều mệnh đề -> search RIÊNG từng mệnh đề rồi hợp union video
-    # (_videos_from_topk_clauses), 1 mệnh đề thì y hệt gọi thẳng videos_from_topk().
-    a, b = anchor_indices if anchor_indices is not None else (0, n_ev - 1)
-    v_first = _videos_from_topk_clauses(faiss_repo, collection, event_clause_vecs[a], per_event)
-    v_last = (_videos_from_topk_clauses(faiss_repo, collection, event_clause_vecs[b], per_event)
-              if n_ev >= 2 and b != a else [])
-    set_first, set_last = set(v_first), set(v_last)
-    inter = set_first & set_last
-    if len(inter) >= 20:
-        cand_videos = [v for v in v_first if v in inter]
-    else:
-        cand_videos = list(dict.fromkeys(v_first + v_last))
+    # Retrieve candidates from EVERY event. Auxiliary visual branches also get a
+    # chance to introduce videos; previously they could only score videos after
+    # the two boundary anchors had already produced the shortlist.
+    event_sources: list[list[tuple[list[str], float]]] = [[] for _ in range(n_ev)]
+    for event_idx, clause_vecs in enumerate(event_clause_vecs):
+        videos = _videos_from_topk_clauses(faiss_repo, collection, clause_vecs, per_event)
+        event_sources[event_idx].append((videos, max(metaclip2_weight, 0.0)))
+    for branch, branch_vecs, branch_weight in (aux_branches or []):
+        if branch_weight <= 0 or len(branch_vecs) != n_ev or not faiss_repo.has_branch(branch):
+            continue
+        for event_idx, vector in enumerate(branch_vecs):
+            videos = faiss_repo.videos_from_topk(branch, vector, per_event)
+            event_sources[event_idx].append((videos, branch_weight))
 
-    if use_text:
-        # Video có tín hiệu chữ/lời RÕ được ưu tiên ĐẦU danh sách — text hiếm/chính
-        # xác hơn thị giác chung chung, xứng đáng thắng khi bị cắt bớt bởi MAX_TRAKE_CANDIDATES.
-        text_videos = _text_candidate_videos(meili_repo, ocr_texts, asr_texts)
-        cand_videos = list(dict.fromkeys(text_videos + cand_videos))
+    text_videos = (_text_candidate_videos(meili_repo, ocr_texts, asr_texts)
+                   if use_text else [])
+    effective_anchors = anchor_indices if anchor_indices is not None else (0, n_ev - 1)
+    cand_videos = _rank_candidate_videos(
+        event_sources,
+        limit=C.MAX_TRAKE_CANDIDATES,
+        anchor_indices=effective_anchors,
+        text_videos=text_videos,
+    )
 
     if video_scope:
         allowed = set(video_scope)
         cand_videos = [v for v in cand_videos if v in allowed]
+        # A small explicit scope is strong user knowledge. Evaluate every scoped
+        # video instead of requiring it to first rank globally in a visual branch.
+        if len(allowed) <= C.MAX_TRAKE_CANDIDATES:
+            cand_videos.extend(v for v in video_scope if v not in cand_videos)
     # Khoá khung hình ngụ ý khoá luôn VIDEO — chỉ dò trong video chứa khung đó.
     if locked_frames and any(f is not None for f in locked_frames):
         locked_videos = _videos_containing_frames(faiss_repo, collection, locked_frames)
@@ -267,6 +395,10 @@ def search_temporal(event_clause_vecs: list[np.ndarray], faiss_repo: FaissRepo, 
     cand_videos = cand_videos[:C.MAX_TRAKE_CANDIDATES]
 
     gaps = _parse_gaps(gap_constraints, n_ev)
+    if max_gap_s is not None and max_gap_s > 0:
+        for event_idx in range(1, n_ev):
+            lo, hi = gaps.get(event_idx, (0.0, float("inf")))
+            gaps[event_idx] = (lo, min(hi, float(max_gap_s)))
     results = []
 
     for video in cand_videos:
@@ -433,6 +565,38 @@ def _run_dp(sub: np.ndarray, lam: float, gaps: dict[int, tuple[float, float]],
             continue
 
         lo_s, hi_s = gap
+        # Normal case: media map has a timestamp for every keyframe. Maintain a
+        # monotonic deque over the admissible time window, reducing constrained
+        # DP from O(n_kf^2) to O(n_kf). This makes a default max-gap practical on
+        # long news compilations.
+        if all(point is not None for point in pts):
+            candidates: deque[int] = deque()
+            add_idx = 0
+            for t in range(1, n_kf):
+                if not np.isfinite(sub[j, t]):
+                    continue
+                t_pts = float(pts[t])
+                newest = t_pts - lo_s
+                while add_idx < t and float(pts[add_idx]) <= newest:
+                    value = best[j - 1, add_idx] + lam * add_idx
+                    if np.isfinite(value):
+                        while candidates and (
+                            best[j - 1, candidates[-1]] + lam * candidates[-1] <= value
+                        ):
+                            candidates.pop()
+                        candidates.append(add_idx)
+                    add_idx += 1
+                oldest = t_pts - hi_s
+                while candidates and float(pts[candidates[0]]) < oldest:
+                    candidates.popleft()
+                if candidates:
+                    tau = candidates[0]
+                    best[j, t] = sub[j, t] + best[j - 1, tau] + lam * tau - lam * t
+                    back[j, t] = tau
+            continue
+
+        # Missing timestamps are rare; preserve the previous permissive
+        # semantics (do not reject an unknown gap) with the quadratic fallback.
         for t in range(1, n_kf):
             if not np.isfinite(sub[j, t]):
                 continue

@@ -137,11 +137,42 @@ export interface SearchResponse {
   cache_stats?: Record<string, unknown> | null;
 }
 
+// ==================== External GPT query plan ====================
+
+export interface QueryPlanContext { vi: string; en: string }
+export interface QueryPlanEvent {
+  vi: string;
+  en: string;
+  anchor: boolean;
+  visual_keywords: string[];
+  ocr: string;
+  asr: string;
+}
+export interface VisualQueryPlan {
+  original_query: string;
+  context: QueryPlanContext;
+  events: QueryPlanEvent[];
+  search_clauses: string[];
+  search_clauses_en: string[];
+  distinctive_features: string[];
+  possible_confusions: string[];
+  ocr_queries: string[];
+  asr_queries: string[];
+  recommended_mode: "search" | "temporal";
+  max_gap_s: number | null;
+}
+export interface QueryPlanValidationResponse {
+  plan: VisualQueryPlan;
+  warnings: string[];
+}
+
 // ==================== Temporal ====================
 
 export interface TemporalRequest {
   events: string[];
   context?: string;
+  /** Bản dịch đã được GPT/người dùng xác nhận, song song 1:1 với events. */
+  event_translations?: string[];
   topk?: number;
   per_event?: number;
   split_clauses?: boolean;
@@ -154,6 +185,8 @@ export interface TemporalRequest {
   video_scope?: string[] | null;
   locked_frames?: (number | null)[] | null;
   gap_constraints?: { from: number; to: number; min_s?: number | null; max_s?: number | null }[];
+  /** Giới hạn giây mặc định giữa hai sự kiện liền kề; null = không giới hạn. */
+  max_gap_s?: number | null;
   alternates_per_event?: number;
   // Phản hồi liên quan RIÊNG từng sự kiện — key = chỉ số sự kiện (0-based).
   // Đánh dấu ✓/✗ trên khung của sự kiện nào chỉ dịch vector của đúng sự kiện đó.

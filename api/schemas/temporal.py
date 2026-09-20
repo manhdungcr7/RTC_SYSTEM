@@ -36,9 +36,15 @@ class TemporalRequest(BaseModel):
 
     # Ghi đè chữ/lời RIÊNG từng sự kiện — người biết chính xác chữ trên màn hình
     # của MỘT khoảnh khắc thì tự nhập cho đúng khoảnh khắc đó, các sự kiện khác
-    # vẫn dùng câu mô tả (không phải tất-cả-hoặc-không-gì).
+    # vẫn dùng câu mô tả nếu KHÔNG cung cấp mục ghi đè. Một mục "" hoặc chỉ có
+    # khoảng trắng chủ ý bỏ qua kênh đó cho sự kiện; None hoặc mục không có
+    # trong danh sách vẫn dùng tự động (tương thích client cũ).
     ocr_queries: list[str] | None = None
     asr_queries: list[str] | None = None
+
+    # Bản dịch tiếng Anh do GPT/người dùng đã xác nhận, song song 1:1 với events.
+    # Khi có, PE-Core/BEiT-3 dùng thẳng thay vì dịch lại bằng model nhẹ.
+    event_translations: list[str] | None = None
 
     # ĐÃ BỎ phạt khoảng cách thời gian (DANTE λ) theo yêu cầu — TRAKE không còn
     # giả định các sự kiện phải gần nhau về thời gian; luôn chạy với λ=0 ở
@@ -64,6 +70,10 @@ class TemporalRequest(BaseModel):
     locked_frames: list[int | None] | None = None
 
     gap_constraints: list[GapConstraint] | None = None
+
+    # Giới hạn mặc định cho khoảng cách giữa hai sự kiện liền kề. Các ràng buộc
+    # cụ thể trong gap_constraints vẫn thắng nếu chặt hơn. None = không giới hạn.
+    max_gap_s: float | None = None
 
     # Số khung thay thế trả kèm cho MỖI vị trí sự kiện, để đổi nhanh một mắt xích
     # yếu mà không phải chạy lại toàn bộ.

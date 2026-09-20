@@ -6,11 +6,14 @@
  * — đây là điểm mù lớn nếu để dịch chạy ngầm: dịch sai nghĩa thì hai nhánh
  * PE-Core và BEiT-3 hỏng hoàn toàn mà người dùng không hề biết.
  */
-import { Languages, Plus, Sparkles, Trash2, X } from "lucide-react";
+import { FileJson, Languages, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { Button, Label, TextArea, cx } from "../../components/ui";
 import { useSession } from "../../stores/sessionStore";
+import type { VisualQueryPlan } from "../../types/api";
+import { QueryPlanImportModal } from "./QueryPlanImportModal";
 import { useClauseSuggest } from "./useSearchQuery";
 
 export function QueryPanel({ onSubmit }: { onSubmit: () => void }) {
@@ -18,6 +21,7 @@ export function QueryPanel({ onSubmit }: { onSubmit: () => void }) {
   const patch = useSession((st) => st.patch);
   const suggest = useClauseSuggest();
   const [enDraft, setEnDraft] = useState<string[]>([]);
+  const [planOpen, setPlanOpen] = useState(false);
 
   useEffect(() => { setEnDraft([]); }, [s.id]);
 
@@ -42,6 +46,39 @@ export function QueryPanel({ onSubmit }: { onSubmit: () => void }) {
 
   const delClause = (i: number) =>
     patch({ clauses: s.clauses.filter((_, k) => k !== i), clausesDirty: true });
+
+  const applyPlan = (plan: VisualQueryPlan) => {
+    const clauses = plan.search_clauses.length
+      ? plan.search_clauses
+      : plan.events.map((e) => e.vi || e.en);
+    const en = plan.search_clauses_en;
+    const ocr = plan.ocr_queries.join(" ").trim();
+    const asr = plan.asr_queries.join(" ").trim();
+    const fallbackQuery = [plan.context.vi, ...clauses].filter(Boolean).join(". ");
+    patch({
+      query: plan.original_query || s.query || fallbackQuery,
+      autoSplit: false,
+      clauses: clauses.map((text) => ({ text, weight: 1, enabled: true })),
+      clausesDirty: true,
+      translations: Object.fromEntries(en.map((text, i) => [i, text])),
+      translationsDirty: en.length > 0,
+      ocr: { ...s.ocr, query: ocr },
+      asr: { ...s.asr, query: asr },
+      enabled: { ...s.enabled, ocr: !!ocr, asr: !!asr },
+      notes: [
+        s.notes,
+        plan.distinctive_features.length
+          ? `Đặc điểm GPT: ${plan.distinctive_features.join("; ")}`
+          : "",
+        plan.possible_confusions.length
+          ? `Dễ nhầm: ${plan.possible_confusions.join("; ")}`
+          : "",
+      ].filter(Boolean).join("\n"),
+    });
+    setEnDraft(en);
+    if (plan.recommended_mode === "temporal")
+      toast.info(`Kế hoạch có ${plan.events.length} sự kiện; nên nhập JSON này ở trang Chuỗi sự kiện.`);
+  };
 
   return (
     <div className="flex flex-col gap-2">
@@ -72,6 +109,9 @@ export function QueryPanel({ onSubmit }: { onSubmit: () => void }) {
       )}
 
       <div className="flex items-center gap-1.5">
+        <Button size="sm" variant="primary" onClick={() => setPlanOpen(true)}>
+          <FileJson size={11} /> Nhập kế hoạch GPT
+        </Button>
         <Button size="sm" onClick={doSuggest} disabled={!s.query.trim() || suggest.isPending}>
           <Sparkles size={11} />
           {suggest.isPending ? "Đang tách…" : "Tách mệnh đề"}
@@ -158,6 +198,13 @@ export function QueryPanel({ onSubmit }: { onSubmit: () => void }) {
           ))}
         </div>
       )}
+
+      <QueryPlanImportModal
+        open={planOpen}
+        onOpenChange={setPlanOpen}
+        sourceQuery={s.query}
+        onApply={applyPlan}
+      />
     </div>
   );
 }
