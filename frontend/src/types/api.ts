@@ -222,6 +222,19 @@ export interface VideoMap {
   video: string; fps: number; duration: number | null; rows: VideoMapRow[];
 }
 
+export interface DresEvaluation {
+  id: string; name: string; status: string; type: string;
+}
+export interface DresCurrentTask { name: string; task_type: string }
+export interface DresAnswer {
+  kind: QueryKind;
+  row: (string | number)[];
+  n_events: number | null;
+}
+export interface DresPayload {
+  answerSets: { answers: ({ mediaItemName: string; start: number; end: number } | { text: string })[] }[];
+}
+
 export interface HealthStatus {
   status: "ok" | "degraded";
   faiss?: { ok: boolean; branches: Record<string, number> };

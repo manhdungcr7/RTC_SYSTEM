@@ -2,7 +2,7 @@
  *  khi chạy thật — xem docker/nginx.conf). Ảnh/video đi thẳng /media/*. */
 import type {
   HealthStatus, QueryPlanValidationResponse, SearchHit, SearchRequest, SearchResponse,
-  TemporalRequest, TemporalResponse,
+  TemporalRequest, TemporalResponse, DresAnswer, DresCurrentTask, DresEvaluation, DresPayload,
   TeamBatch, TeamBatchSummary, TeamCheckStatus, VideoMap, VideoSearchResponse,
 } from "../types/api";
 
@@ -97,6 +97,11 @@ export const api = {
     get<{ video: string; segments: { t: number; end: number; text: string }[] }>(
       `/videos/${encodeURIComponent(video)}/transcript`, signal),
 
+  asrWindow: (video: string, t: number, before = 3, after = 5, signal?: AbortSignal) =>
+    get<{ segments: { t: number; end: number; text: string }[] }>(
+      `/media/asr-window/${encodeURIComponent(video)}?t=${encodeURIComponent(t)}&before=${encodeURIComponent(before)}&after=${encodeURIComponent(after)}`,
+      signal),
+
   videoOcr: (video: string, signal?: AbortSignal) =>
     get<{ video: string; rows: { n: number; text: string }[] }>(
       `/videos/${encodeURIComponent(video)}/ocr`, signal),
@@ -114,6 +119,21 @@ export const api = {
   submitPreview: (kind: string, rows: unknown[][], n_events?: number | null) =>
     post<{ csv_text: string; errors: string[] }>("/submit/build",
       { kind, rows, n_events: n_events ?? null }),
+
+  dresConfig: () => get<{ base_url: string }>("/dres/config"),
+  dresSession: () => get<{ connected: boolean; version: number }>("/dres/session"),
+  dresLogin: (username: string, password: string) =>
+    post<{ connected: boolean; version: number }>("/dres/login", { username, password }),
+  dresConnect: (session_id: string) =>
+    post<{ connected: boolean; version: number }>("/dres/connect", { session_id }),
+  dresDisconnect: () => post<{ connected: boolean; version: number }>("/dres/disconnect", {}),
+  dresEvaluations: () => get<DresEvaluation[]>("/dres/evaluations"),
+  dresCurrentTask: (evaluation_id: string) =>
+    post<DresCurrentTask>("/dres/current-task", { evaluation_id }),
+  dresPreview: (answer: DresAnswer) => post<DresPayload>("/dres/preview", answer),
+  dresSubmit: (answer: DresAnswer, session_version: number, evaluation_id: string) =>
+    post<{ submitted: boolean; verdict: string | null; message: string }>("/dres/submit",
+      { ...answer, session_version, evaluation_id }),
 
   /** Tra tay 1 khung hình theo (video, frame_idx) — xem api/routers/media.py.
    *  Đi qua `/media/` (không phải `/api/`) — cùng cách thumbUrl/videoUrl gọi. */

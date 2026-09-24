@@ -129,6 +129,27 @@ CSV map ở mục 3b).
 Chỉ cần bước này nếu muốn xem/phát lại video gốc trong modal chi tiết — tìm
 kiếm/xem thumbnail không phụ thuộc vào nó.
 
+Nếu video nằm trên nhiều ổ đĩa, đặt biến `AIC_VIDEO_DIRS` thành danh sách các
+thư mục chứa trực tiếp file `.mp4`. Khi chạy backend trực tiếp trên Windows,
+phân cách các đường dẫn bằng dấu `;`, ví dụ:
+
+```powershell
+$env:AIC_VIDEO_DIRS = "D:\AIC\videos-part-a;E:\AIC\videos-part-b"
+```
+
+Khi chạy Docker, bind-mount từng thư mục vào container và dùng dấu `:` giữa các
+đường dẫn bên trong container; xem ví dụ trong `docker/docker-compose.yml` và
+`docker/.env.example`. Nếu có file trùng tên, thư mục đứng trước được ưu tiên.
+
+**Video S3 Singapore:** Docker hiện mặc định dùng
+`https://d14le8uni46xsj.cloudfront.net` qua biến `AIC_VIDEO_CDN_BASE_URL`.
+Backend kiểm tra file `.mp4`/`.mov` ở gốc bucket rồi chuyển hướng `/media/video/<tên>`
+sang CloudFront; trình duyệt tải và tua trực tiếp từ CDN. Keyframe/map vẫn đọc local.
+Đổi URL trong `docker/.env` nếu cần; đặt biến rỗng để chỉ phát file local.
+Sau khi sửa, vào thư mục `docker/` và chạy `docker compose up -d --build backend`.
+Kiểm tra bằng `curl -I http://localhost:8080/media/video/L21_V001` (trả 307 và
+`Location` là CloudFront). File MOV còn phụ thuộc codec mà trình duyệt hỗ trợ.
+
 Sau khi giải nén xong, cấu trúc phải giống (tính từ `RTC_SYSTEM/`, KHÔNG có
 lớp `aic-system/` bọc ngoài — xem lưu ý ở mục 2):
 
@@ -428,6 +449,21 @@ soi kỹ), gộp các khung quá gần nhau về thời gian, và tổng số k�
   bằng ẢNH (không chỉ chữ thô) thì dùng nút **Xem CSV** ở thanh trên cùng —
   xem mục "Đòn bẩy thủ công khác" ở 8.2.
 - Tải riêng từng file `.csv` bằng nút "Tải ...csv".
+- **Nộp trực tiếp 1 đáp án lên DRES (vòng chung kết)**: trong file nháp đang mở,
+  một thành viên đăng nhập DRES hoặc nhập `sessionId` lấy từ trang `/user`.
+  Backend giữ kết nối chung trong RAM; các thành viên khác mở web sẽ tự thấy kết
+  nối trong tối đa 4 giây, không cần đăng nhập lại. Sau đó chọn kỳ thi `ACTIVE`,
+  kiểm tra câu DRES hiện tại, chọn một dòng, xem JSON thực tế rồi bấm
+  **Nộp 1 đáp án lên DRES** và xác nhận.
+  Hệ thống chỉ gửi dòng đó cho câu đang mở trên DRES; không gửi cả file hay cả
+  batch. KIS và QA được đổi từ `frame_idx` (1-based) sang mili giây theo map
+  video; TRAKE gửi danh sách frame ID. Nếu BTC dùng server khác, đặt
+  `AIC_DRES_BASE_URL` trong `docker/.env` rồi khởi động lại backend. Mật khẩu và
+  `sessionId` không gửi về trình duyệt khác và không ghi vào bản nháp, database
+  hay backup. Khởi động lại backend sẽ cần một thành viên kết nối lại. Nút
+  **Ngắt cho cả nhóm** ngắt kết nối trên mọi trình duyệt. Backend chặn cùng một
+  đáp án gửi trùng cho một câu từ nhiều thành viên. Xem kết quả chấm trên trang
+  DRES.
 
 ---
 

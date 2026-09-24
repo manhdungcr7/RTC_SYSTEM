@@ -79,8 +79,9 @@ def validate(rows: list[list], kind: str, n_events: int | None = None) -> list[s
             if n_events and len(r) != n_events + 1:
                 errs.append(f"dòng {i}: TRAKE cần {n_events} frame, có {len(r)-1}")
             frames = r[1:]
-            if any(int(a) > int(b) for a, b in zip(frames, frames[1:])):
-                errs.append(f"dòng {i}: frame không tăng dần theo thời gian")
+            if all(str(c).strip().isdigit() for c in frames):
+                if any(int(a) >= int(b) for a, b in zip(frames, frames[1:])):
+                    errs.append(f"dòng {i}: frame không tăng dần theo thời gian")
 
         idx_cols = r[1:2] if kind in ("kis", "qa") else r[1:]
         for c in idx_cols:

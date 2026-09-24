@@ -58,6 +58,18 @@ export function DetailOverlay() {
     staleTime: Infinity,
   });
 
+  const { data: nearbyAsr } = useQuery({
+    queryKey: ["asr-window", hit?.video, hit?.pts_time,
+               session.asr.window_before, session.asr.window_after],
+    queryFn: ({ signal }) => api.asrWindow(
+      hit!.video, hit!.pts_time!, session.asr.window_before, session.asr.window_after, signal),
+    enabled: !!hit && hit.pts_time != null && !hit.content?.asr_window?.length,
+    staleTime: Infinity,
+    retry: 0,
+  });
+  const asrWindow = hit?.content?.asr_window?.length
+    ? hit.content.asr_window : nearbyAsr?.segments ?? [];
+
   const { reading, stepFrames, seekTo } = useFrameIndex(videoRef, map);
 
   const lookup = useMutation({
@@ -377,11 +389,11 @@ export function DetailOverlay() {
                 <p className="font-mono text-[11px] leading-snug text-[var(--color-fg-dim)]">{hit.content.objects}</p>
               </div>
             )}
-            {!!hit.content?.asr_window?.length && (
+            {!!asrWindow.length && (
               <div>
                 <div className="label-xs mb-0.5" style={{ color: "var(--color-sig-asr)" }}>Lời thoại quanh đây</div>
                 <div className="flex flex-col gap-0.5">
-                  {hit.content.asr_window.map((s, i) => (
+                  {asrWindow.map((s, i) => (
                     <button key={i} type="button" onClick={() => seekTo(s.t)}
                             className="text-left text-[11px] leading-snug text-[var(--color-fg-dim)] hover:text-[var(--color-fg)]">
                       <span className="font-mono tabular-nums text-[var(--color-fg-mute)]">

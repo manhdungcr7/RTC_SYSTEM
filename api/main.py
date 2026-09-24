@@ -29,6 +29,7 @@ async def lifespan(app: FastAPI):
 
     print("[main] build media_index (glob đĩa)...")
     app.state.media_index = MediaIndex().build()
+    app.state.media_index.warm_remote_maps_async(app.state.faiss_repo.all_videos())
 
     # LƯU Ý — ĐÃ SỬA LỖI THẬT: TRƯỚC ĐÂY startup tự nạp lại encoder_override.json
     # (bảng Kết nối lần trước) và cho nó THẮNG .env. Hệ quả: mỗi lần Kaggle đổi
@@ -66,7 +67,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from api.routers import (config as config_router, media, query_plan, search,  # noqa: E402
+from api.routers import (config as config_router, dres, media, query_plan, search,  # noqa: E402
                           similar, submit, team_submissions, temporal, videos)
 
 app.include_router(search.router)
@@ -75,6 +76,7 @@ app.include_router(query_plan.router)
 app.include_router(similar.router)
 app.include_router(media.router)
 app.include_router(submit.router)
+app.include_router(dres.router)
 app.include_router(videos.router)
 app.include_router(config_router.router)
 app.include_router(team_submissions.router)

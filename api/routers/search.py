@@ -229,6 +229,8 @@ def search(req: SearchRequest,
 
     # ============ 1. Mệnh đề thị giác (LLM chỉ ĐỀ XUẤT — P4) ============
     # Ưu tiên: ghi đè tay (req.clauses) > cờ split_clauses > mặc định tự tách.
+    need_en = ((encoders.pecore is not None and _branch_on(req, "pecore")) or
+               (encoders.beit3 is not None and _branch_on(req, "beit3")))
     if req.clauses is not None:
         clauses_mc = [c.text for c in req.clauses if c.enabled and c.text.strip()]
         clause_w = [c.weight for c in req.clauses if c.enabled and c.text.strip()]
@@ -238,11 +240,21 @@ def search(req: SearchRequest,
         clauses_mc = [query_vi] if query_vi else []
         clause_w = None
     else:
-        clauses_mc = query_service.clauses_metaclip2(query_vi, use_expansion=req.use_expansion)
         clause_w = None
+        if need_en:
+            # The two LLM suggestions are independent network calls. Start both
+            # together so cold queries wait for the slower call, not their sum.
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                mc_future = pool.submit(query_service.clauses_metaclip2, query_vi,
+                                        use_expansion=req.use_expansion)
+                en_future = pool.submit(query_service.clauses_en, query_vi)
+                clauses_mc = mc_future.result()
+                suggested_en = en_future.result()
+        else:
+            clauses_mc = query_service.clauses_metaclip2(query_vi,
+                                                         use_expansion=req.use_expansion)
+            suggested_en = []
 
-    need_en = ((encoders.pecore is not None and _branch_on(req, "pecore")) or
-               (encoders.beit3 is not None and _branch_on(req, "beit3")))
     if need_en:
         # split_clauses TẮT -> vẫn LUÔN dịch (pecore/beit3 chỉ hiểu tiếng Anh),
         # nhưng dịch NGUYÊN câu thành 1 khối, không để LLM tự tách thêm mệnh đề.
@@ -259,7 +271,7 @@ def search(req: SearchRequest,
             else:
                 clauses_en = list(clauses_mc)
         elif req.split_clauses:
-            clauses_en = query_service.clauses_en(query_vi)
+            clauses_en = suggested_en
         elif query_vi:
             clauses_en = translate.vi2en([query_vi]) if translate.available() else [query_vi]
         else:
@@ -304,7 +316,8 @@ def search(req: SearchRequest,
                 for name, (branch, texts, enc) in encode_jobs.items()
             }
             if want_beit3:
-                futures[pool.submit(encoders.beit3.encode_one, clauses_en)] = "beit3"
+                futures[pool.submit(vec_cache.encode_pooled_cached, "beit3_pool",
+                                    clauses_en, encoders.beit3.encode_one)] = "beit3"
             for fut in as_completed(futures):
                 name = futures[fut]
                 try:
@@ -452,6 +465,7 @@ def search(req: SearchRequest,
 
     hits_raw = [Hit(id=i, video=meta[i][0], n=meta[i][1], frame_idx=meta[i][2], score=fused[i])
                 for i in top_ids if i in meta]
+    media_index.prefetch_maps(m[0] for m in meta.values())
 
     if req.dedup_seconds:
         hits_raw = dedup_by_time(hits_raw, media_index.pts_time, req.dedup_seconds)
@@ -480,13 +494,8 @@ def search(req: SearchRequest,
             explain = HitExplain(branches=branches, clauses=clause_list,
                                   penalties=penalties.get(h.id, {}))
             doc = content_map.get(h.id, {})
-            pts = media_index.pts_time(h.video, h.n)
-            asr_window = []
-            if pts is not None:
-                asr_window = meili.asr_segments_for_video(
-                    h.video, pts - asr_cfg.window_before, pts + asr_cfg.window_after, size=5)
             content = FrameContent(caption=doc.get("caption"), ocr=doc.get("ocr"),
-                                    objects=doc.get("objects"), asr_window=asr_window)
+                                    objects=doc.get("objects"), asr_window=[])
         hits.append(SearchHit(
             id=h.id, video=h.video, n=h.n, frame_idx=h.frame_idx, score=h.score,
             thumb_url=f"/media/thumb/{h.video}/{h.n}",
@@ -499,6 +508,7 @@ def search(req: SearchRequest,
         for name, scored, _w in signal_data:
             ids = [i for i, _ in scored[:BRANCH_LIST_TOPK]]
             bmeta = faiss.fetch_by_ids("metaclip2", ids)
+            media_index.prefetch_maps(m[0] for m in bmeta.values())
             branch_rankings.append(BranchRanking(branch=name, hits=[
                 SearchHit(id=i, video=bmeta[i][0], n=bmeta[i][1], frame_idx=bmeta[i][2],
                            score=s, thumb_url=f"/media/thumb/{bmeta[i][0]}/{bmeta[i][1]}",

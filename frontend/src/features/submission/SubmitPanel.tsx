@@ -30,6 +30,7 @@ import { useTeamBoard } from "../../stores/teamBoardStore";
 import { isValidMemberId, useTeamIdentity } from "../../stores/teamIdentityStore";
 import type { DraftFile, DraftRow } from "../../stores/submissionStore";
 import type { QueryKind } from "../../types/api";
+import { DresSubmitPanel } from "./DresSubmitPanel";
 
 /** Đổi đuôi -kis/-qa/-trake theo loại task đang chọn — người dùng đổi task thì
  *  không phải nhớ tự sửa tay tên file theo, dễ quên -> nộp nhầm đuôi cũ. Tên
@@ -328,7 +329,7 @@ export function SubmitPanel() {
           </div>
 
           <p className="text-[10px] leading-snug text-[var(--color-fg-mute)]">
-            Thứ tự dòng có tính điểm — dòng trên cùng là đáp án bạn tin nhất. Kéo biểu tượng bên trái để đổi.
+            Với CSV, dòng trên cùng là đáp án bạn tin nhất. Với DRES, hãy chọn đúng một dòng ở mục bên dưới.
           </p>
 
           <div className="overflow-x-auto">
@@ -391,7 +392,7 @@ export function SubmitPanel() {
 
           <div>
             <div className="mb-1 flex items-center gap-2">
-              <Label className="mb-0">Xem trước CSV (đúng nội dung sẽ nộp)</Label>
+              <Label className="mb-0">Xem trước CSV để tải file</Label>
               <Button size="sm" variant="ghost" onClick={() => preview.mutate(file)}>Cập nhật</Button>
             </div>
             <pre className="max-h-[140px] overflow-auto rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg)] p-2 font-mono text-[10.5px] leading-relaxed text-[var(--color-fg-dim)]">
@@ -408,6 +409,7 @@ export function SubmitPanel() {
           Tên file đặt trùng tên câu truy vấn BTC giao, ví dụ <span className="font-mono">query-p1-1-kis</span>.
         </p>
       )}
+      <DresSubmitPanel file={file} />
       </div>
 
       {file && (

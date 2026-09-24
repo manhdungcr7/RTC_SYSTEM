@@ -120,6 +120,19 @@ class QueryVectorCache:
                 self.put(branch, texts[i], v)
         return np.stack([c for c in cached if c is not None]).astype(np.float32)
 
+    def encode_pooled_cached(self, branch: str, texts: list[str], encode_fn) -> np.ndarray | None:
+        """Cache one vector produced from the complete ordered list of clauses."""
+        if not texts:
+            return None
+        cache_text = "\x00".join(texts)
+        cached = self.get(branch, cache_text)
+        if cached is not None:
+            return cached
+        vector = encode_fn(texts)
+        if vector is not None:
+            self.put(branch, cache_text, vector)
+        return vector
+
     def stats(self) -> dict:
         total = self.hits + self.misses
         return {"hits": self.hits, "misses": self.misses,

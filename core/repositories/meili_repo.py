@@ -16,6 +16,7 @@ tham số MỚI (videos/strict) đều có default an toàn, không phá code g�
 from __future__ import annotations
 
 import meilisearch
+from meilisearch.errors import MeilisearchApiError
 
 from config import settings
 
@@ -58,6 +59,7 @@ class MeiliRepo:
         self.frames = self.client.index(settings.MEILI_INDEX_FRAMES)
         self.asr = self.client.index(settings.MEILI_INDEX_ASR)
         self.videos = self.client.index(settings.MEILI_INDEX_VIDEOS)
+        self._frame_id_filterable = True
 
     def search_frames(self, field: str, query_text: str, size: int,
                        videos: list[str] | None = None, strict: bool = False) -> list[str]:
@@ -208,6 +210,9 @@ class MeiliRepo:
         BATCH = 200
         for i in range(0, len(ids), BATCH):
             chunk = ids[i:i + BATCH]
+            if not self._frame_id_filterable:
+                out.update(self._get_frame_docs_by_primary_key(chunk))
+                continue
             quoted = ", ".join(f'"{x}"' for x in chunk)
             try:
                 res = self.frames.search("", {
@@ -215,14 +220,46 @@ class MeiliRepo:
                     "limit": len(chunk),
                     "attributesToRetrieve": ["id", "caption", "ocr_text", "objects"],
                 })
+            except MeilisearchApiError as e:
+                if e.code == "invalid_search_filter":
+                    self._frame_id_filterable = False
+                    print("[meili_repo] id is not filterable; fetching frames by primary key")
+                    out.update(self._get_frame_docs_by_primary_key(chunk))
+                    continue
+                print(f"[meili_repo] get_frame_docs failed ({e.code or type(e).__name__})")
+                return out
             except Exception as e:
-                # `id` có thể chưa nằm trong filterableAttributes -> bỏ qua êm,
-                # UI chỉ mất phần nội dung phụ chứ không hỏng kết quả tìm kiếm.
-                print(f"[meili_repo] get_frame_docs bỏ qua ({type(e).__name__}: {e})")
+                print(f"[meili_repo] get_frame_docs failed ({type(e).__name__})")
                 return out
             for h in res["hits"]:
                 out[h["id"]] = {"caption": h.get("caption"), "ocr": h.get("ocr_text"),
                                  "objects": h.get("objects")}
+        return out
+
+    def _get_frame_docs_by_primary_key(self, ids: list[str]) -> dict[str, dict]:
+        """Read older indexes that have `video` but not `id` as a filterable field."""
+        out: dict[str, dict] = {}
+        for frame_id in ids:
+            video, sep, number = frame_id.rpartition(":")
+            if not sep or not video or not number.isdigit():
+                continue
+            try:
+                doc = self.frames.get_document(
+                    f"{video}_{number}",
+                    {"fields": "id,caption,ocr_text,objects"},
+                )
+            except MeilisearchApiError as e:
+                if e.status_code == 404:
+                    continue
+                print(f"[meili_repo] frame fetch failed ({e.code or type(e).__name__})")
+                break
+            except Exception as e:
+                print(f"[meili_repo] frame fetch failed ({type(e).__name__})")
+                break
+            if doc.id == frame_id:
+                out[frame_id] = {"caption": getattr(doc, "caption", None),
+                                 "ocr": getattr(doc, "ocr_text", None),
+                                 "objects": getattr(doc, "objects", None)}
         return out
 
     def asr_segments_for_video(self, video: str, start: float, end: float,

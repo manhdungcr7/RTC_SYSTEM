@@ -3,14 +3,17 @@ sẵn local, không cần tải lại — xem core/media_index.py)."""
 from __future__ import annotations
 
 from pathlib import Path
+import math
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 
 from api.deps import get_media_index, get_meili
 from api.schemas.search import FrameContent, SearchHit
 from core.media_index import MediaIndex
 from core.repositories.meili_repo import MeiliRepo
+from core.video_source import resolve_cdn_video_url, valid_video_name
+from config import settings
 
 router = APIRouter(prefix="/media")
 
@@ -18,10 +21,25 @@ router = APIRouter(prefix="/media")
 _THUMB_HEADERS = {"Cache-Control": "public, max-age=31536000, immutable"}  # keyframe không đổi
 
 
+@router.get("/asr-window/{video}")
+def asr_window(video: str, t: float, before: float = 3, after: float = 5,
+               meili: MeiliRepo = Depends(get_meili)):
+    """Fetch nearby speech only when a frame is opened in the detail viewer."""
+    if not valid_video_name(video):
+        raise HTTPException(400, "tên video không hợp lệ")
+    if (not all(math.isfinite(v) for v in (t, before, after)) or t < 0
+            or not 0 <= before <= 120 or not 0 <= after <= 120):
+        raise HTTPException(400, "khoảng thời gian không hợp lệ")
+    return {"segments": meili.asr_segments_for_video(video, t - before, t + after, size=5)}
+
+
 @router.get("/frame/{video}/{n}")
 def frame(video: str, n: int, media_index: MediaIndex = Depends(get_media_index)):
     p = media_index.resolve_frame_path(video, n)
     if p is None:
+        url = media_index.keyframe_cdn_url(video, n)
+        if url:
+            return RedirectResponse(url, status_code=307)
         raise HTTPException(404, f"không tìm thấy keyframe {video}:{n:06d}")
     return FileResponse(p, media_type="image/webp", headers=_THUMB_HEADERS)
 
@@ -33,17 +51,26 @@ def thumb(video: str, n: int, media_index: MediaIndex = Depends(get_media_index)
     tiền sinh, không lỗi."""
     p = media_index.resolve_thumb_path(video, n)
     if p is None:
+        url = media_index.keyframe_cdn_url(video, n)
+        if url:
+            return RedirectResponse(url, status_code=307)
         raise HTTPException(404, f"không tìm thấy keyframe {video}:{n:06d}")
     return FileResponse(p, media_type="image/webp", headers=_THUMB_HEADERS)
 
 
 @router.get("/video/{video}")
 def video(video: str, media_index: MediaIndex = Depends(get_media_index)):
+    if not valid_video_name(video):
+        raise HTTPException(400, "tên video không hợp lệ")
+    if settings.VIDEO_CDN_BASE_URL:
+        url = resolve_cdn_video_url(settings.VIDEO_CDN_BASE_URL, video)
+        if url:
+            return RedirectResponse(url, status_code=307)
     p = media_index.resolve_video_path(video)
     if p is None:
         raise HTTPException(404, f"không tìm thấy video {video}")
     # FileResponse (Starlette) tự xử lý header Range -> tua video mượt trên UI.
-    return FileResponse(p, media_type="video/mp4")
+    return FileResponse(p, media_type="video/quicktime" if p.suffix.lower() == ".mov" else "video/mp4")
 
 
 @router.get("/filmstrip/{video}")
@@ -103,8 +130,12 @@ def frame_at(video: str, t: float, media_index: MediaIndex = Depends(get_media_i
     import tempfile
     import uuid
 
-    p = media_index.resolve_video_path(video)
-    if p is None:
+    if not valid_video_name(video):
+        raise HTTPException(400, "tên video không hợp lệ")
+    remote_url = (resolve_cdn_video_url(settings.VIDEO_CDN_BASE_URL, video)
+                  if settings.VIDEO_CDN_BASE_URL else None)
+    p = media_index.resolve_video_path(video) if remote_url is None else None
+    if p is None and remote_url is None:
         raise HTTPException(404, f"không tìm thấy video {video}")
     if t < 0:
         raise HTTPException(400, "tham số t phải >= 0")
@@ -121,7 +152,8 @@ def frame_at(video: str, t: float, media_index: MediaIndex = Depends(get_media_i
         tmp = out.with_suffix(f".{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp")
         # -ss TRƯỚC -i: seek nhanh (không giải mã từ đầu). -frames:v 1: đúng 1 ảnh.
         cmd = ["ffmpeg", "-nostdin", "-loglevel", "error", "-ss", f"{t:.3f}",
-               "-i", str(p), "-frames:v", "1", "-q:v", "3", "-y", str(tmp)]
+               "-i", remote_url or str(p), "-frames:v", "1", "-q:v", "3",
+               "-f", "image2", "-y", str(tmp)]
         try:
             r = subprocess.run(cmd, capture_output=True, timeout=30)
         except FileNotFoundError:

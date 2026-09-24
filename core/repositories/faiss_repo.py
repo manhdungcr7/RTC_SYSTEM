@@ -36,26 +36,18 @@ class FaissRepo:
 
     @staticmethod
     def _read_index(idx_path: Path) -> faiss.Index:
-        """Nạp index bằng MEMORY-MAP thay vì đọc hết vào RAM.
+        """Nạp thẳng index vào RAM.
 
-        VÌ SAO: 6 nhánh × 167.850 vector = ~5,6GB nếu nạp thẳng vào RAM. Trên máy
-        15GB đang chạy cả Docker/trình duyệt/VSCode, việc này thường xuyên OOM
-        ngay lúc khởi động ("Cannot allocate memory") — ĐÃ GẶP THẬT nhiều lần.
-
-        Với mmap, hệ điều hành ánh xạ file và chỉ nạp trang nhớ THẬT SỰ được
-        chạm tới, tự giải phóng khi thiếu bộ nhớ. IndexFlat đọc tuần tự lúc tìm
-        kiếm nên rất hợp: sau vài truy vấn đầu, trang nóng đã nằm sẵn trong bộ
-        đệm của hệ điều hành, tốc độ tương đương nạp thẳng — nhưng KHÔNG còn
-        chiếm cứng RAM và khởi động nhanh hơn hẳn.
-
-        Rơi về cách nạp thường nếu mmap thất bại (định dạng index không hỗ trợ),
-        để không bao giờ chết vì một tối ưu."""
-        try:
-            return faiss.read_index(str(idx_path), faiss.IO_FLAG_MMAP | faiss.IO_FLAG_READ_ONLY)
-        except Exception as e:
-            print(f"[faiss_repo] mmap không dùng được cho {idx_path.name} "
-                  f"({type(e).__name__}) -> nạp thẳng vào RAM")
-            return faiss.read_index(str(idx_path))
+        ĐÃ ĐO: cờ IO_FLAG_MMAP KHÔNG có tác dụng với IndexFlat/IndexScalarQuantizer
+        (faiss 1.15 chỉ mmap inverted lists của IVF) — faiss vẫn đọc hết vào RAM
+        ẩn danh, không báo lỗi. Với 6,6GB float32 trong Docker ~7,6GB, tiến trình
+        bị đẩy ra swap và truy vấn lạnh mất 10-60 giây. Cách chữa là giảm kích
+        thước: chuyển index sang fp16 bằng indexing/convert_faiss_fp16.py (~3,3GB)."""
+        idx = faiss.read_index(str(idx_path))
+        if isinstance(idx, faiss.IndexFlat):
+            print(f"[faiss_repo] cảnh báo: {idx_path.parent.name} vẫn là float32 — chạy "
+                  f"indexing/convert_faiss_fp16.py để giảm một nửa RAM")
+        return idx
 
     def _load_branch(self, branch: str):
         idx_path = self.faiss_dir / branch / "index.faiss"
