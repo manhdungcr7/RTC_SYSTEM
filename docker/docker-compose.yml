@@ -31,6 +31,14 @@ services:
       AIC_MEILI_KEY: ${AIC_MEILI_KEY:-}
       AIC_DATA_ROOT: /data
       AIC_ARTIFACTS_ROOT: /artifacts
+      AIC_DRES_BASE_URL: ${AIC_DRES_BASE_URL:-https://eventretrieval.one}
+      # Danh sách thư mục video bên trong container, phân cách bằng dấu ":".
+      # Khi video nằm trên nhiều ổ, bind-mount từng ổ ở `volumes` bên dưới rồi
+      # đặt ví dụ AIC_VIDEO_DIRS=/videos-a:/videos-b trong docker/.env.
+      AIC_VIDEO_DIRS: ${AIC_VIDEO_DIRS:-/data/videos_full/videos}
+      AIC_VIDEO_CDN_BASE_URL: ${AIC_VIDEO_CDN_BASE_URL:-https://d14le8uni46xsj.cloudfront.net}
+      AIC_KEYFRAME_CDN_BASE_URL: ${AIC_KEYFRAME_CDN_BASE_URL:-}
+      AIC_KEYFRAME_SOURCE: ${AIC_KEYFRAME_SOURCE:-auto}
       # Điền URL/KEY từ notebook Kaggle (indexing/kaggle/11_encode_service.py) —
       # xem README.md mục "Chạy encoder trên Kaggle". Có thể để trong ../.env
       # (docker compose tự đọc) thay vì gõ tay ở đây.
@@ -43,6 +51,10 @@ services:
       - ../data:/data
       - ../artifacts:/artifacts
       - ./volumes/faiss:/faiss
+      - C:/Users/huypro37/Videos/AIC_videos:/videos-extra:ro
+      # Ví dụ video nằm ở hai ổ (bỏ comment và thay đường dẫn thật):
+      # - D:/videos-part-a:/videos-a:ro
+      # - E:/videos-part-b:/videos-b:ro
     ports:
       - "8080:8080"
     depends_on:
