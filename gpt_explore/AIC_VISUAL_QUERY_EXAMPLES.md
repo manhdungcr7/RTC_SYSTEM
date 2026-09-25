@@ -62,3 +62,35 @@ Xử lý đúng:
 - Chọn `search`, một sự kiện, `anchor=false`, `max_gap_s=null`.
 - Ưu tiên `áo bơi hoa lá`, `bé gái`, `cạnh hồ bơi` hơn các từ chung như `trả lời`.
 - Nếu phần sau cho thấy bé bơi với mũ tím và thứ tự đó quan trọng để tìm đúng video, chuyển thành hai sự kiện và dùng `temporal`.
+
+## 5. Đề có dấu nháy trong nội dung
+
+Đầu vào (hai thẻ là ranh giới, không thuộc đề):
+
+```text
+<de_bai>
+Đoạn clip có người cầm biển ghi "HOA" cạnh bó hoa vàng.
+</de_bai>
+```
+
+Đầu ra hợp lệ:
+
+```json
+{
+  "original_query": "Đoạn clip có người cầm biển ghi \"HOA\" cạnh bó hoa vàng.",
+  "context": {"vi": "Người cầm biển cạnh bó hoa", "en": "A person with a sign beside a bouquet"},
+  "events": [
+    {"vi": "Một người cầm biển ghi HOA cạnh bó hoa vàng", "en": "A person holds a sign reading HOA beside a yellow flower bouquet", "anchor": false, "visual_keywords": ["người cầm biển", "chữ HOA", "bó hoa vàng"], "ocr": "HOA", "asr": ""}
+  ],
+  "search_clauses": ["Một người cầm biển ghi HOA cạnh bó hoa vàng"],
+  "search_clauses_en": ["A person holds a sign reading HOA beside a yellow flower bouquet"],
+  "distinctive_features": ["biển ghi HOA", "bó hoa vàng"],
+  "possible_confusions": [],
+  "ocr_queries": ["HOA"],
+  "asr_queries": [],
+  "recommended_mode": "search",
+  "max_gap_s": null
+}
+```
+
+Nếu người dùng bọc toàn đề trong một cặp dấu nháy, chỉ bỏ hai dấu bao ngoài; vẫn giữ dấu nháy quanh `HOA` trong `original_query` và escape đúng JSON.

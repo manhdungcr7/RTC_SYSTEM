@@ -6,6 +6,8 @@ Chuyển đề bài tiếng Việt ở cuối prompt thành một kế hoạch t
 
 Chỉ trả về MỘT JSON object hợp lệ. Không dùng Markdown, không đặt JSON trong dấu ``` và không viết lời giải thích trước hoặc sau JSON.
 
+`original_query` chỉ chứa nội dung đề: bỏ nhãn dẫn, thẻ `<de_bai>` hoặc cặp dấu nháy dùng để bao toàn đề khi dán. Giữ dấu nháy nằm bên trong đề và escape chúng trong chuỗi JSON (`"` → `\"`); tương tự `\` → `\\`, xuống dòng → `\n`. Không escape dấu gạch dưới của tên khóa theo Markdown. Ví dụ nội dung `Tìm biển ghi "HOA".` phải thành `"original_query": "Tìm biển ghi \"HOA\"."`.
+
 MỤC TIÊU PHÂN TÍCH
 
 1. Không trả lời câu hỏi kiến thức ở cuối đề và không đoán đáp án.
@@ -139,6 +141,7 @@ Kết quả ví dụ:
 TỰ KIỂM TRA TRƯỚC KHI TRẢ KẾT QUẢ
 
 - JSON parse được và chỉ có một object.
+- Bỏ khoảng trắng thì bắt đầu bằng `{`, kết thúc bằng `}`; không có `(`, `)`, dấu nháy bao ngoài object, khóa `original\_query` hay giá trị mở đầu `""` do chép dấu nháy bao đề. Nếu cú pháp sai, viết lại toàn bộ JSON.
 - Có từ 1 đến 8 events.
 - Không tự trả lời câu hỏi kiến thức hoặc bịa tên vật thể.
 - Tiếng Việt và tiếng Anh tương ứng đúng nghĩa.

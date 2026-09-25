@@ -279,6 +279,38 @@ Giữ tư thế và điều kiện thời điểm. Quy tắc thường chọn 2�
 }
 ```
 
+## 6. Đề có dấu nháy trong nội dung
+
+Đầu vào (hai thẻ chỉ dùng để bao đề):
+
+```text
+<de_bai>
+Đoạn clip có người cầm biển ghi "HOA" cạnh bó hoa vàng.
+</de_bai>
+```
+
+Đầu ra hợp lệ:
+
+```json
+{
+  "original_query": "Đoạn clip có người cầm biển ghi \"HOA\" cạnh bó hoa vàng.",
+  "context": {"vi": "Người cầm biển cạnh bó hoa", "en": "A person with a sign beside a bouquet"},
+  "events": [
+    {"vi": "Một người cầm biển ghi HOA cạnh bó hoa vàng", "en": "A person holds a sign reading HOA beside a yellow flower bouquet", "anchor": false, "visual_keywords": ["người cầm biển", "chữ HOA", "bó hoa vàng"], "ocr": "HOA", "asr": ""}
+  ],
+  "search_clauses": ["Một người cầm biển ghi HOA cạnh bó hoa vàng"],
+  "search_clauses_en": ["A person holds a sign reading HOA beside a yellow flower bouquet"],
+  "distinctive_features": ["biển ghi HOA", "bó hoa vàng"],
+  "possible_confusions": [],
+  "ocr_queries": ["HOA"],
+  "asr_queries": [],
+  "recommended_mode": "search",
+  "max_gap_s": null
+}
+```
+
+Nếu người dùng đặt thêm một cặp dấu nháy quanh toàn đề, chỉ bỏ cặp bao ngoài; giữ dấu nháy quanh `HOA` và escape đúng JSON.
+
 ## Những sửa nghĩa cần tránh
 
 - Bột được mô tả rõ là khô: dùng `flour`/`powder`, không mặc định `dough`/`batter`. Nếu đề chỉ nói bột, chưa đủ để khẳng định trạng thái.
