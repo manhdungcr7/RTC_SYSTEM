@@ -67,7 +67,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from api.routers import (config as config_router, dres, media, query_plan, search,  # noqa: E402
+from api.routers import (config as config_router, dres, live_questions, media, query_plan, search,  # noqa: E402
                           similar, submit, team_submissions, temporal, videos)
 
 app.include_router(search.router)
@@ -80,6 +80,7 @@ app.include_router(dres.router)
 app.include_router(videos.router)
 app.include_router(config_router.router)
 app.include_router(team_submissions.router)
+app.include_router(live_questions.router)
 
 
 @app.get("/health")

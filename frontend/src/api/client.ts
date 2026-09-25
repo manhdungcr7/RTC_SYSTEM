@@ -3,7 +3,8 @@
 import type {
   HealthStatus, QueryPlanValidationResponse, SearchHit, SearchRequest, SearchResponse,
   TemporalRequest, TemporalResponse, DresAnswer, DresCurrentTask, DresEvaluation, DresPayload,
-  TeamBatch, TeamBatchSummary, TeamCheckStatus, VideoMap, VideoSearchResponse,
+  TeamBatch, TeamBatchSummary, TeamCheckStatus, LiveQuestion, LiveReveal, QueryKind,
+  VideoMap, VideoSearchResponse,
 } from "../types/api";
 
 const API = "/api";
@@ -73,6 +74,7 @@ async function download(path: string, init?: RequestInit): Promise<Blob> {
 async function del<T>(path: string): Promise<T> {
   const res = await fetch(`${API}${path}`, { method: "DELETE" });
   if (!res.ok) throw new ApiError(await res.text(), res.status);
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
@@ -159,6 +161,20 @@ export const api = {
   },
 
   listTeamBatches: (signal?: AbortSignal) => get<TeamBatchSummary[]>("/team-submissions/batches", signal),
+  listLiveQuestions: (signal?: AbortSignal) => get<LiveQuestion[]>("/live-questions", signal),
+  createLiveQuestion: (data: { label: string; kind: QueryKind; qa_question: string }) =>
+    post<LiveQuestion>("/live-questions", data),
+  updateLiveQuestion: (id: string, data: { label: string; qa_question: string }) =>
+    put<LiveQuestion>(`/live-questions/${encodeURIComponent(id)}`, data),
+  deleteLiveQuestion: (id: string) =>
+    del<void>(`/live-questions/${encodeURIComponent(id)}`),
+  addLiveReveal: (id: string, data: { text_vi: string; text_en: string }) =>
+    post<LiveReveal>(`/live-questions/${encodeURIComponent(id)}/reveals`, data),
+  updateLiveReveal: (id: string, revealId: number, data: { text_vi: string; text_en: string }) =>
+    put<LiveReveal>(`/live-questions/${encodeURIComponent(id)}/reveals/${revealId}`, data),
+  backupLiveQuestions: () => get<{ format: string; version: number; exported_at: string; questions: LiveQuestion[] }>("/live-questions/backup"),
+  restoreLiveQuestions: (snapshot: unknown, replaceExisting = false) =>
+    post<LiveQuestion[]>(`/live-questions/restore?replace_existing=${replaceExisting}`, snapshot),
   getTeamBatch: (batchId: string, signal?: AbortSignal) =>
     get<TeamBatch>(`/team-submissions/batches/${encodeURIComponent(batchId)}`, signal),
   deleteTeamBatch: (batchId: string) =>

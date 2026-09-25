@@ -30,6 +30,7 @@ export interface SessionState {
   id: string;
   label: string;
   kind: QueryKind;
+  liveQuestionId?: string;
 
   query: string;
   autoSplit: boolean;         // false = KHÔNG tự tách mệnh đề/mở rộng câu, dùng nguyên câu gốc

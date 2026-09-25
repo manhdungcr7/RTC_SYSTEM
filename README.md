@@ -467,6 +467,29 @@ soi kỹ), gộp các khung quá gần nhau về thời gian, và tổng số k�
 
 ---
 
+### 8.5. Nhật ký câu hỏi và hint trong lúc thi
+
+Nút **Câu & hint** trên thanh trên cùng mở nhật ký chung cho cả đội. Tạo câu KIS,
+Q&A hoặc TRAKE ngay khi BTC đưa thông tin đầu tiên; không cần chờ `question.zip`.
+Với Q&A, nhập câu hỏi cần trả lời vào ô riêng. Mỗi lần BTC công bố thêm mô tả,
+bấm **Lưu mốc mới**. Nếu cùng một mốc có cả tiếng Việt và tiếng Anh, điền hai ô
+của cùng mốc; chỉ điền nguyên văn BTC, không ghi bản dịch tự suy đoán vào đó.
+
+Các máy cùng thấy thay đổi sau tối đa khoảng 4 giây. Nút **Chép đề đã lộ**
+chỉ sao chép đủ những mốc đã lộ, có nhãn ngôn ngữ và tách riêng câu hỏi Q&A.
+Dán văn bản này vào GPT Explore đang dùng như một tin nhắn mới; không cần tạo GPT
+khác. Nút không gửi dữ liệu sang GPT. Nút **Đưa
+vào Search** tạo hoặc mở phiên tìm kiếm gắn với câu này. Khi thêm hint, bấm
+**Cập nhật Search** để lấy toàn bộ mô tả mới; thao tác này xóa mệnh đề và bản
+dịch của kế hoạch GPT cũ, giữ các khung đã ghim. Sau đó nhập lại kế hoạch GPT
+đã cập nhật và chủ động bấm Tìm. Nhật ký không tự sửa bản nháp nộp bài.
+
+Dữ liệu chung nằm trong `artifacts/live_questions.sqlite3` và sống qua restart
+Docker nhờ volume `/artifacts`. Nút **Backup** tải JSON; **Restore** thay toàn bộ
+nhật ký sau khi xác nhận. Bản backup này độc lập với backup bảng chia sẻ bài nộp.
+
+---
+
 ## 9. Cơ chế sai chính tả OCR/ASR — hoạt động thế nào
 
 OCR và "Khớp đúng từ" của ASR dùng CHUNG 1 cơ chế: Meilisearch tự động dung

@@ -4,13 +4,14 @@
  *  người dùng phải thấy NGAY và biết chính xác cái gì còn dùng được — chứ không
  *  ngồi đoán vì sao tìm mãi không ra. */
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { FileSearch, Keyboard, Plug, Plus, Save, Search, UserRound, X } from "lucide-react";
+import { FileSearch, Keyboard, NotebookTabs, Plug, Plus, Save, Search, UserRound, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { toast } from "sonner";
 
 import { api } from "../api/client";
 import { Button, Label, Pop, StatusDot, TextInput, cx } from "../components/ui";
+import { LiveQuestionsDialog } from "../features/liveQuestions/LiveQuestionsDialog";
 import { useSession } from "../stores/sessionStore";
 import { useSubmission } from "../stores/submissionStore";
 import { isValidMemberId, useTeamIdentity } from "../stores/teamIdentityStore";
@@ -182,6 +183,7 @@ function TeamIdentityPopover() {
 }
 
 export function Topbar() {
+  const [liveQuestionsOpen, setLiveQuestionsOpen] = useState(false);
   const setShortcutsOpen = useUi((s) => s.setShortcutsOpen);
   const setConnectionOpen = useUi((s) => s.setConnectionOpen);
   const setCsvPreviewOpen = useUi((s) => s.setCsvPreviewOpen);
@@ -206,6 +208,9 @@ export function Topbar() {
       <SessionTabs />
 
       <div className="ml-auto flex shrink-0 items-center gap-1">
+        <Button size="sm" variant="ghost" onClick={() => setLiveQuestionsOpen(true)} title="Nhật ký câu hỏi và hint chung cho cả đội">
+          <NotebookTabs size={12} /> Câu &amp; hint
+        </Button>
         {totalRows > 0 && (
           <span className="font-mono text-[10.5px] tabular-nums text-[var(--color-fg-mute)]">
             nháp {totalRows}
@@ -225,6 +230,7 @@ export function Topbar() {
           <Keyboard size={12} />
         </Button>
       </div>
+      <LiveQuestionsDialog open={liveQuestionsOpen} onOpenChange={setLiveQuestionsOpen} />
     </header>
   );
 }

@@ -247,6 +247,26 @@ export interface HealthStatus {
 
 export type TeamCheckStatus = "unchecked" | "checked" | "needs_rework";
 
+export interface LiveReveal {
+  id: number;
+  question_id: string;
+  position: number;
+  text_vi: string;
+  text_en: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LiveQuestion {
+  id: string;
+  label: string;
+  kind: QueryKind;
+  qa_question: string;
+  created_at: string;
+  updated_at: string;
+  reveals: LiveReveal[];
+}
+
 export interface TeamIdentity {
   displayName: string;
   memberId: string;

@@ -56,7 +56,10 @@ export function QueryPanel({ onSubmit }: { onSubmit: () => void }) {
     const asr = plan.asr_queries.join(" ").trim();
     const fallbackQuery = [plan.context.vi, ...clauses].filter(Boolean).join(". ");
     patch({
-      query: plan.original_query || s.query || fallbackQuery,
+      // Phiên gắn với nhật ký chung giữ nguyên đề gốc đã chép từ server.
+      // GPT đôi khi đưa nhãn Hint/thời gian vào original_query; các nhãn ấy
+      // không phải tín hiệu để encode trong nhánh CapEmb.
+      query: s.liveQuestionId ? s.query : (plan.original_query || s.query || fallbackQuery),
       autoSplit: false,
       clauses: clauses.map((text) => ({ text, weight: 1, enabled: true })),
       clausesDirty: true,
